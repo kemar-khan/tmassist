@@ -2,35 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/in_memory_store.dart';
 import '../../models/ticket.dart';
+import '../../models/user.dart';
 import '../../utils/enums.dart';
 
-class TicketDetailScreen extends StatefulWidget {
+class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
 
-  const TicketDetailScreen({super.key, required this.ticketId});
+  const SupervisorTicketDetailScreen({super.key, required this.ticketId});
 
   @override
-  State<TicketDetailScreen> createState() => _TicketDetailScreenState();
+  State<SupervisorTicketDetailScreen> createState() =>
+      _SupervisorTicketDetailScreenState();
 }
 
-class _TicketDetailScreenState extends State<TicketDetailScreen> {
+class _SupervisorTicketDetailScreenState
+    extends State<SupervisorTicketDetailScreen> {
   bool _isUpdating = false;
 
-  void _handleStatusChange(TicketStatus? newStatus, InMemoryStore store) {
-    if (newStatus == null) return;
-
+  void _handleCloseTicket(InMemoryStore store) {
     setState(() => _isUpdating = true);
-
-    // Simulate minor delay for premium feel
     Future.delayed(const Duration(milliseconds: 500), () {
-      store.updateTicketStatus(ticketId: widget.ticketId, status: newStatus);
+      store.updateTicketStatus(
+        ticketId: widget.ticketId,
+        status: TicketStatus.closed,
+      );
       if (mounted) {
         setState(() => _isUpdating = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Status updated to ${newStatus.displayName}"),
+          const SnackBar(
+            content: Text("Ticket closed successfully"),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 1),
           ),
         );
       }
@@ -54,11 +55,25 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     const mockAddress = '123 Tech Lane, Block B, Floor 4';
     const mockPriority = 'High';
 
+    // Find assigned technician name
+    String? assignedTechName;
+    if (ticket.assignedTo != null) {
+      final tech = store.users.firstWhere(
+        (u) => u.id == ticket.assignedTo,
+        orElse: () => const AppUser(
+          id: '',
+          name: 'Unknown Technician',
+          role: UserRole.technician,
+        ),
+      );
+      assignedTechName = tech.name;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         title: const Text(
-          'Job Details',
+          'Supervisor View',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF005CAB),
@@ -70,20 +85,55 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. Status Update Section (Technician Specific)
-            _buildSectionTitle('Update Job Status'),
-            _buildUpdateStatusCard(ticket, store),
+            // 1. Primary Action (Assign or Close)
+            if (ticket.status == TicketStatus.newTicket)
+              _buildActionCard(
+                title: "Ticket is Unassigned",
+                buttonLabel: "ASSIGN TECHNICIAN",
+                icon: Icons.person_add_alt_1_rounded,
+                color: const Color(0xFFFF6600),
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/admin/assign',
+                    arguments: ticket.id,
+                  );
+                },
+              )
+            else if (ticket.status == TicketStatus.resolved)
+              _buildActionCard(
+                title: "Ticket Resolved by Technician",
+                buttonLabel: "CLOSE TICKET",
+                icon: Icons.check_circle_outline,
+                color: Colors.green,
+                onPressed: _isUpdating ? null : () => _handleCloseTicket(store),
+              )
+            else if (ticket.status == TicketStatus.closed)
+              _buildInfoStatusCard(
+                "This ticket is Closed",
+                Icons.lock_outline,
+                Colors.grey,
+              )
+            else
+              _buildInfoStatusCard(
+                "Technician is currently working on this",
+                Icons.engineering_outlined,
+                Colors.purple,
+              ),
+
             const SizedBox(height: 24),
 
-            // 2. Action Buttons (Technician Specific)
-            _buildSectionTitle('Actions'),
-            _buildActionButtons(),
-            const SizedBox(height: 24),
-
-            // 3. Ticket Status & Progress Timeline
-            _buildSectionTitle('Progress Timeline'),
+            // 2. Ticket Status & Progress Timeline
+            _buildSectionTitle('Ticket Progress'),
             _buildStatusTimelineCard(ticket.status),
             const SizedBox(height: 24),
+
+            // 3. Technician Info (if assigned)
+            if (ticket.assignedTo != null) ...[
+              _buildSectionTitle('Assigned Technician'),
+              _buildTechnicianCard(assignedTechName ?? "Unknown"),
+              const SizedBox(height: 24),
+            ],
 
             // 4. Ticket Info
             _buildSectionTitle('Ticket Info'),
@@ -92,13 +142,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
             // 5. Activity Log
             _buildSectionTitle('Activity Log'),
-            _buildActivityLogCard(ticket),
+            _buildActivityLogCard(ticket, assignedTechName),
             const SizedBox(height: 24),
-
-            // 6. Attachments
-            _buildSectionTitle('Attachments'),
-            _buildAttachmentsCard(),
-            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -137,136 +182,76 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
-  // --- 1. Update Status Card ---
-  Widget _buildUpdateStatusCard(Ticket ticket, InMemoryStore store) {
+  Widget _buildActionCard({
+    required String title,
+    required String buttonLabel,
+    required IconData icon,
+    required Color color,
+    VoidCallback? onPressed,
+  }) {
     return _buildCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Select Current Status",
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<TicketStatus>(
-            value: ticket.status,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.sync_rounded, color: Colors.orange),
-              filled: true,
-              fillColor: Colors.grey[50],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[200]!),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey[200]!),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            ),
-            items:
-                [
-                  TicketStatus.assigned,
-                  TicketStatus.inProgress,
-                  TicketStatus.resolved,
-                  TicketStatus.closed,
-                ].map((status) {
-                  return DropdownMenuItem(
-                    value: status,
-                    child: Text(status.displayName),
-                  );
-                }).toList(),
-            onChanged: _isUpdating
-                ? null
-                : (val) => _handleStatusChange(val, store),
-          ),
-          if (_isUpdating)
-            const Padding(
-              padding: EdgeInsets.only(top: 8.0),
-              child: Center(
-                child: LinearProgressIndicator(
-                  backgroundColor: Colors.transparent,
-                  color: Colors.orange,
+          Row(
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                buttonLabel,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
+          ),
         ],
       ),
     );
   }
 
-  // --- 2. Action Buttons Card ---
-  Widget _buildActionButtons() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildActionButton(
-            icon: Icons.checklist_rtl_rounded,
-            label: "CHECKLIST",
-            color: const Color(0xFFFF6600),
-            onPressed: () {
-              Navigator.pushNamed(
-                context,
-                '/tech/checklist',
-                arguments: widget.ticketId,
-              );
-            },
+  Widget _buildInfoStatusCard(String text, IconData icon, Color color) {
+    return _buildCard(
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildActionButton(
-            icon: Icons.summarize_rounded,
-            label: "REPORT",
-            color: const Color(0xFF005CAB),
-            onPressed: () {
-              Navigator.pushNamed(
-                context,
-                '/tech/report',
-                arguments: widget.ticketId,
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onPressed,
-  }) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 0,
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 13,
-          letterSpacing: 0.5,
-        ),
+        ],
       ),
     );
   }
 
-  // --- 3. Status Timeline Card ---
   Widget _buildStatusTimelineCard(TicketStatus currentStatus) {
     final steps = [
       {'title': 'Assigned', 'status': TicketStatus.assigned},
       {'title': 'In Progress', 'status': TicketStatus.inProgress},
-      {'title': 'Completed', 'status': TicketStatus.resolved},
+      {'title': 'Resolved', 'status': TicketStatus.resolved},
     ];
 
     int currentStepIndex = 0;
@@ -281,15 +266,16 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         currentStepIndex = 2;
         break;
       case TicketStatus.resolved:
-      case TicketStatus.closed:
         currentStepIndex = 3;
+        break;
+      case TicketStatus.closed:
+        currentStepIndex = 4;
         break;
     }
 
     return _buildCard(
       child: Column(
         children: List.generate(steps.length, (index) {
-          final step = steps[index];
           final isCompleted = index <= currentStepIndex;
           final isCurrent = index == currentStepIndex;
           final isLast = index == steps.length - 1;
@@ -330,7 +316,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    step['title'] as String,
+                    steps[index]['title'] as String,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: isCurrent
@@ -350,7 +336,43 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
-  // --- 4. Ticket Info Card ---
+  Widget _buildTechnicianCard(String name) {
+    return _buildCard(
+      child: Row(
+        children: [
+          const CircleAvatar(
+            radius: 25,
+            backgroundColor: Color(0xFF005CAB),
+            child: Icon(Icons.engineering, color: Colors.white),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'Assigned Technician',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.phone_outlined, color: Color(0xFFFF6600)),
+            onPressed: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInfoCard(
     Ticket ticket,
     String category,
@@ -438,30 +460,35 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
-  Widget _buildDivider() {
-    return Divider(color: Colors.grey[100], height: 16);
-  }
+  Widget _buildDivider() => Divider(color: Colors.grey[100], height: 16);
 
-  // --- 5. Activity Log Card ---
-  Widget _buildActivityLogCard(Ticket ticket) {
+  Widget _buildActivityLogCard(Ticket ticket, String? techName) {
     final logs = [
       {
         'title': 'Ticket Created',
         'date': ticket.createdAt,
-        'desc': 'System logged ticket.',
+        'desc': 'Logged in system.',
       },
-      if (ticket.status != TicketStatus.newTicket)
+      if (ticket.assignedTo != null)
         {
           'title': 'Assigned',
-          'date': ticket.updatedAt.subtract(const Duration(hours: 1)),
-          'desc': 'Assigned to your queue.',
+          'date': ticket.updatedAt.subtract(const Duration(hours: 2)),
+          'desc': 'Assigned to $techName.',
         },
       if (ticket.status == TicketStatus.inProgress ||
-          ticket.status == TicketStatus.resolved)
+          ticket.status == TicketStatus.resolved ||
+          ticket.status == TicketStatus.closed)
         {
-          'title': 'In Progress',
-          'date': ticket.updatedAt.subtract(const Duration(minutes: 15)),
-          'desc': 'You started working.',
+          'title': 'Work Started',
+          'date': ticket.updatedAt.subtract(const Duration(hours: 1)),
+          'desc': 'Technician is on site.',
+        },
+      if (ticket.status == TicketStatus.resolved ||
+          ticket.status == TicketStatus.closed)
+        {
+          'title': 'Resolved',
+          'date': ticket.updatedAt,
+          'desc': 'Technician marked as resolved.',
         },
     ].reversed.toList();
 
@@ -471,10 +498,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: logs.length,
         itemBuilder: (context, index) {
-          final log = logs[index];
-          final date = log['date'] as DateTime;
           final isFirst = index == 0;
-
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: Row(
@@ -496,7 +520,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            log['title'] as String,
+                            logs[index]['title'] as String,
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -506,7 +530,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                             ),
                           ),
                           Text(
-                            '${date.day}/${date.month} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                            '${(logs[index]['date'] as DateTime).day}/${(logs[index]['date'] as DateTime).month}',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey[500],
@@ -515,7 +539,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         ],
                       ),
                       Text(
-                        log['desc'] as String,
+                        logs[index]['desc'] as String,
                         style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                       ),
                     ],
@@ -525,46 +549,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  // --- 6. Attachments Card ---
-  Widget _buildAttachmentsCard() {
-    return _buildCard(
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.image_outlined, color: Colors.grey[400]),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'router_photo.jpg',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                Text(
-                  '850 KB',
-                  style: TextStyle(color: Colors.grey, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.remove_red_eye_outlined,
-            color: Color(0xFF005CAB),
-            size: 20,
-          ),
-        ],
       ),
     );
   }

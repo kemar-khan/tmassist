@@ -57,8 +57,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (user.role == UserRole.admin) {
       Navigator.pushReplacementNamed(context, '/admin');
-    } else {
+    } else if (user.role == UserRole.technician) {
       Navigator.pushReplacementNamed(context, '/tech');
+    } else if (user.role == UserRole.customer) {
+      Navigator.pushReplacementNamed(context, '/customer');
     }
   }
 
@@ -212,20 +214,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
 
                   const SizedBox(height: 24),
-
-                  // Small helper info
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.black12),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: const Text(
-                      'Note: This is a prototype login using dummy users (no password required).',
-                      style: TextStyle(fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text("Don't have an account?"),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/register'),
+                        child: const Text(
+                          "Register Now",
+                          style: TextStyle(
+                            color: Color(0xFF005CAB),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

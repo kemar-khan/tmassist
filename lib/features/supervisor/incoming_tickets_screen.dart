@@ -4,24 +4,22 @@ import '../../data/in_memory_store.dart';
 import '../../models/ticket.dart';
 import '../../utils/enums.dart';
 
-class AssignedTicketsScreen extends StatefulWidget {
-  const AssignedTicketsScreen({super.key});
+class IncomingTicketsScreen extends StatefulWidget {
+  const IncomingTicketsScreen({super.key});
 
   @override
-  State<AssignedTicketsScreen> createState() => _AssignedTicketsScreenState();
+  State<IncomingTicketsScreen> createState() => _IncomingTicketsScreenState();
 }
 
-class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
+class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
   String _searchQuery = "";
 
   @override
   Widget build(BuildContext context) {
     final store = context.watch<InMemoryStore>();
-    final user = store.currentUser;
-    
-    // Get tickets assigned to this technician
-    final assignedTickets = store.tickets
-        .where((t) => t.assignedTo == user?.id)
+    // Incoming tickets are usually "New" tickets
+    final incomingTickets = store.tickets
+        .where((t) => t.status == TicketStatus.newTicket)
         .where((t) => t.title.toLowerCase().contains(_searchQuery.toLowerCase()) || 
                       t.id.toLowerCase().contains(_searchQuery.toLowerCase()))
         .toList();
@@ -29,7 +27,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('My Tasks', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Incoming Tickets', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF005CAB),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -60,13 +58,13 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
 
           // Ticket List
           Expanded(
-            child: assignedTickets.isEmpty
+            child: incomingTickets.isEmpty
                 ? _buildEmptyState()
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: assignedTickets.length,
+                    itemCount: incomingTickets.length,
                     itemBuilder: (context, index) {
-                      return _buildTicketCard(context, assignedTickets[index]);
+                      return _buildIncomingTicketCard(context, incomingTickets[index]);
                     },
                   ),
           ),
@@ -75,7 +73,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
     );
   }
 
-  Widget _buildTicketCard(BuildContext context, Ticket ticket) {
+  Widget _buildIncomingTicketCard(BuildContext context, Ticket ticket) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -96,7 +94,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
           onTap: () {
             Navigator.pushNamed(
               context,
-              '/tech/ticket',
+              '/admin/ticket',
               arguments: ticket.id,
             );
           },
@@ -108,7 +106,21 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildStatusBadge(ticket.status),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        "UNASSIGNED",
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                     Text(
                       '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
                       style: TextStyle(color: Colors.grey[500], fontSize: 12),
@@ -147,63 +159,30 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    const Icon(Icons.location_on_outlined, size: 16, color: Colors.orange),
-                    const SizedBox(width: 4),
-                    const Text(
-                      "Cyberjaya, Selangor", // Hardcoded for demo
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
                     const Spacer(),
-                    const Text(
-                      "View Details",
-                      style: TextStyle(
-                        color: Color(0xFF005CAB),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/admin/assign',
+                          arguments: ticket.id,
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF6600),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
                       ),
+                      child: const Text("Assign Now"),
                     ),
-                    const Icon(Icons.chevron_right, color: Color(0xFF005CAB), size: 18),
                   ],
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge(TicketStatus status) {
-    Color color;
-    switch (status) {
-      case TicketStatus.assigned:
-        color = Colors.blue;
-        break;
-      case TicketStatus.inProgress:
-        color = Colors.purple;
-        break;
-      case TicketStatus.resolved:
-        color = Colors.green;
-        break;
-      case TicketStatus.closed:
-        color = Colors.grey;
-        break;
-      default:
-        color = Colors.orange;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        status.displayName.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -217,7 +196,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
           Icon(Icons.assignment_turned_in_outlined, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            "No active tasks",
+            "All caught up!",
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -226,7 +205,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            "All your assigned tickets are completed or closed.",
+            "There are no unassigned tickets at the moment.",
             style: TextStyle(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),

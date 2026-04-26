@@ -2,6 +2,7 @@
 enum UserRole {
   admin,
   technician,
+  customer,
 }
 
 /// Defines the lifecycle of a service ticket
@@ -21,6 +22,8 @@ extension UserRoleExtension on UserRole {
         return "Admin";
       case UserRole.technician:
         return "Technician";
+      case UserRole.customer:
+        return "Customer";
     }
   }
 }

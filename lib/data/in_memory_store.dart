@@ -71,6 +71,26 @@ class InMemoryStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void registerCustomer({
+    required String name,
+    required String email,
+    required String phone,
+    required String address,
+  }) {
+    final now = DateTime.now();
+    final id = 'u_cust_${now.millisecondsSinceEpoch}';
+    final newUser = AppUser(
+      id: id,
+      name: name,
+      role: UserRole.customer,
+      email: email,
+      phone: phone,
+      address: address,
+    );
+    _users.add(newUser);
+    notifyListeners();
+  }
+
   // ----------------------------
   // Admin actions
   // ----------------------------

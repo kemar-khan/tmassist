@@ -12,7 +12,7 @@ class App extends StatelessWidget {
     return MaterialApp(
       title: 'TMAssist (Dummy)',
       debugShowCheckedModeBanner: false,
-      initialRoute: '/login',
+      initialRoute: '/customer',
       onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }
