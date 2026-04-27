@@ -1,11 +1,7 @@
 // lib/features/auth/register_customer_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
-import '../../data/in_memory_store.dart';
-import '../../models/user.dart';
-import '../../utils/enums.dart';
 
 class RegisterCustomerScreen extends StatefulWidget {
   const RegisterCustomerScreen({super.key});
@@ -56,17 +52,6 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
       );
 
       if (!mounted) return;
-
-      // Update in-memory store so the app knows who is logged in
-      final store = context.read<InMemoryStore>();
-      store.loginAs(AppUser(
-        id: credential.user?.uid ?? 'unknown',
-        name: _nameController.text.trim(),
-        role: UserRole.customer,
-        email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
-        address: _addressController.text.trim(),
-      ));
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

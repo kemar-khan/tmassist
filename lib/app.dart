@@ -2,8 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:tmassist/features/auth/login_screen.dart';
-
-import 'features/auth/auth_gate.dart';
 import 'router.dart';
 
 class App extends StatelessWidget {

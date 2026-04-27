@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_customer_screen.dart';
-import 'features/supervisor/create_ticket_screen.dart';
 import 'features/supervisor/assign_ticket_screen.dart';
 import 'features/supervisor/ticket_detail_screen.dart';
 import 'features/supervisor/supervisor_main_screen.dart';
@@ -33,11 +32,8 @@ class AppRouter {
       // Supervisor
       case '/supervisor':
         return MaterialPageRoute(builder: (_) => const SupervisorMainScreen());
-      case '/supervisor/create':
-        return MaterialPageRoute(builder: (_) => const CreateTicketScreen());
       case '/supervisor/assign':
         final args = settings.arguments;
-
         if (args == null || args is! String) {
           return MaterialPageRoute(
             builder: (_) =>
@@ -68,7 +64,10 @@ class AppRouter {
           builder: (_) => ChecklistScreen(ticketId: ticketId),
         );
       case '/tech/report':
-        return MaterialPageRoute(builder: (_) => const ReportScreen());
+        final ticketId = settings.arguments as String;
+        return MaterialPageRoute(
+          builder: (_) => ReportScreen(ticketId: ticketId),
+        );
 
       // Customer
       case '/customer':

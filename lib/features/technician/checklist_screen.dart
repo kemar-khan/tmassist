@@ -1,6 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../data/in_memory_store.dart';
 
 class ChecklistScreen extends StatefulWidget {
   final String ticketId;
@@ -14,179 +13,262 @@ class ChecklistScreen extends StatefulWidget {
 class _ChecklistScreenState extends State<ChecklistScreen> {
   bool _isGenerating = false;
 
-  void _handleGenerate(InMemoryStore store) async {
+  Future<void> _handleGenerate() async {
     setState(() => _isGenerating = true);
 
-    // Simulate minor delay for UX
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      await FirebaseFirestore.instance
+          .collection('tickets')
+          .doc(widget.ticketId)
+          .update({
+            'checklistItems': [
+              'Check router power',
+              'Inspect modem indicators',
+              'Test cable connection',
+              'Restart equipment',
+              'Verify internet access',
+            ],
+            'checklistDone': [false, false, false, false, false],
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
-    if (mounted) {
-      store.generateChecklistMock(ticketId: widget.ticketId);
-      setState(() => _isGenerating = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Standard Maintenance Checklist Generated"),
-          backgroundColor: Color(0xFF005CAB),
-        ),
-      );
+      if (mounted) {
+        setState(() => _isGenerating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Standard Maintenance Checklist Generated"),
+            backgroundColor: Color(0xFF005CAB),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isGenerating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to generate checklist: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  void _handleToggle(int index, bool value, InMemoryStore store) {
-    store.toggleChecklistItem(
-      ticketId: widget.ticketId,
-      index: index,
-      value: value,
-    );
+  Future<void> _handleToggle(
+    List<bool> checklistDone,
+    int index,
+    bool value,
+  ) async {
+    try {
+      final updated = List<bool>.from(checklistDone);
+      updated[index] = value;
+
+      await FirebaseFirestore.instance
+          .collection('tickets')
+          .doc(widget.ticketId)
+          .update({
+            'checklistDone': updated,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to update checklist: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-    final ticket = store.getTicketById(widget.ticketId);
-
-    if (ticket == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text("Error")),
-        body: const Center(child: Text("Ticket not found")),
-      );
-    }
-
-    final hasChecklist = ticket.checklistItems.isNotEmpty;
-    final totalItems = ticket.checklistItems.length;
-    final doneItems = ticket.checklistDone.where((d) => d).length;
-    final progress = totalItems > 0 ? doneItems / totalItems : 0.0;
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(
-        children: [
-          // Top Section: TM Blue Header
-          Container(
-            height: 200,
-            width: double.infinity,
-            decoration: const BoxDecoration(
-              color: Color(0xFF005CAB),
-              borderRadius: BorderRadius.only(bottomLeft: Radius.circular(50)),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tickets')
+          .doc(widget.ticketId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              title: const Text("Loading"),
+              backgroundColor: const Color(0xFF005CAB),
+              foregroundColor: Colors.white,
             ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Error")),
+            body: Center(child: Text("Error: ${snapshot.error}")),
+          );
+        }
+
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Error")),
+            body: const Center(child: Text("Ticket not found")),
+          );
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final ticketTitle = (data['title'] ?? '').toString();
+        final checklistItems = List<String>.from(data['checklistItems'] ?? []);
+        final checklistDoneDynamic = List.from(data['checklistDone'] ?? []);
+        final checklistDone = checklistDoneDynamic
+            .map((e) => e == true)
+            .toList();
+
+        final hasChecklist = checklistItems.isNotEmpty;
+        final totalItems = checklistItems.length;
+        final doneItems = checklistDone.where((d) => d).length;
+        final progress = totalItems > 0 ? doneItems / totalItems : 0.0;
+
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: Column(
+            children: [
+              // Top Section: TM Blue Header
+              Container(
+                height: 200,
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF005CAB),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(50),
+                  ),
+                ),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(
-                            Icons.arrow_back_ios,
-                            color: Colors.white,
-                          ),
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(
+                                Icons.arrow_back_ios,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              "Maintenance Checklist",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          "Maintenance Checklist",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 48.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                ticketTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              // Progress Bar
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: LinearProgressIndicator(
+                                        value: progress,
+                                        backgroundColor: Colors.white
+                                            .withOpacity(0.2),
+                                        valueColor:
+                                            const AlwaysStoppedAnimation<Color>(
+                                              Colors.orange,
+                                            ),
+                                        minHeight: 8,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Text(
+                                    "${(progress * 100).toInt()}%",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 48.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            ticket.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Progress Bar
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: LinearProgressIndicator(
-                                    value: progress,
-                                    backgroundColor: Colors.white.withOpacity(
-                                      0.2,
-                                    ),
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                          Colors.orange,
-                                        ),
-                                    minHeight: 8,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Text(
-                                "${(progress * 100).toInt()}%",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                  ),
+                ),
+              ),
+
+              // Main Content Section
+              Expanded(
+                child: !hasChecklist
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(20),
+                        itemCount: totalItems,
+                        itemBuilder: (context, index) {
+                          final item = checklistItems[index];
+                          final isDone = index < checklistDone.length
+                              ? checklistDone[index]
+                              : false;
+                          return _buildChecklistItem(
+                            index,
+                            item,
+                            isDone,
+                            checklistDone,
+                          );
+                        },
+                      ),
+              ),
+
+              if (hasChecklist && progress == 1.0)
+                Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text("TICKET READY FOR REPORT"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Main Content Section
-          Expanded(
-            child: !hasChecklist
-                ? _buildEmptyState(store)
-                : ListView.builder(
-                    padding: const EdgeInsets.all(20),
-                    itemCount: totalItems,
-                    itemBuilder: (context, index) {
-                      final item = ticket.checklistItems[index];
-                      final isDone = ticket.checklistDone[index];
-                      return _buildChecklistItem(index, item, isDone, store);
-                    },
-                  ),
-          ),
-
-          if (hasChecklist && progress == 1.0)
-            Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text("TICKET READY FOR REPORT"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
                   ),
                 ),
-              ),
-            ),
-        ],
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -194,7 +276,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     int index,
     String label,
     bool isDone,
-    InMemoryStore store,
+    List<bool> checklistDone,
   ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -207,7 +289,11 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       ),
       child: CheckboxListTile(
         value: isDone,
-        onChanged: (val) => _handleToggle(index, val ?? false, store),
+        onChanged: (val) => _handleToggle(
+          index == -1 ? [] : checklistDone,
+          index,
+          val ?? false,
+        ),
         title: Text(
           label,
           style: TextStyle(
@@ -224,7 +310,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     );
   }
 
-  Widget _buildEmptyState(InMemoryStore store) {
+  Widget _buildEmptyState() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40.0),
@@ -252,7 +338,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                onPressed: _isGenerating ? null : () => _handleGenerate(store),
+                onPressed: _isGenerating ? null : _handleGenerate,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6600),
                   foregroundColor: Colors.white,
