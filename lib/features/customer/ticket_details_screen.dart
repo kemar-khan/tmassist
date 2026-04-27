@@ -58,6 +58,7 @@ class TicketDetailsScreen extends StatelessWidget {
           final status = (data['status'] ?? 'NEW').toString().toUpperCase();
           final attachmentUrl = (data['attachmentUrl'] ?? '').toString();
           final technicianId = data['technicianId'];
+          final technicianName = data['technicianName'];
           final createdAt = data['createdAt'] as Timestamp?;
           final updatedAt = data['updatedAt'] as Timestamp?;
 
@@ -83,7 +84,7 @@ class TicketDetailsScreen extends StatelessWidget {
 
                 if (technicianId != null) ...[
                   _buildSectionTitle('Technician Info'),
-                  _buildTechnicianCard(technicianId.toString()),
+                  _buildTechnicianCard(technicianName.toString()),
                   const SizedBox(height: 24),
                 ],
 
@@ -100,7 +101,7 @@ class TicketDetailsScreen extends StatelessWidget {
                   status: status,
                   createdAt: createdAt,
                   updatedAt: updatedAt,
-                  technicianId: technicianId?.toString(),
+                  technicianName: technicianName?.toString(),
                 ),
                 const SizedBox(height: 24),
 
@@ -393,7 +394,7 @@ class TicketDetailsScreen extends StatelessWidget {
     required String status,
     required Timestamp? createdAt,
     required Timestamp? updatedAt,
-    String? technicianId,
+    String? technicianName,
   }) {
     final List<Map<String, dynamic>> logs = [
       {
@@ -403,7 +404,7 @@ class TicketDetailsScreen extends StatelessWidget {
       },
     ];
 
-    if (technicianId != null) {
+    if (technicianName != null) {
       logs.add({
         'title': 'Technician Assigned',
         'date': updatedAt?.toDate(),

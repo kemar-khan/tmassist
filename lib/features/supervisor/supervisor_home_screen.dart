@@ -1,408 +1,503 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../data/in_memory_store.dart';
-import '../../models/ticket.dart';
-import '../../models/user.dart';
-import '../../utils/enums.dart';
 
 class SupervisorHomeScreen extends StatelessWidget {
   const SupervisorHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-    final currentUser = store.currentUser;
-    final tickets = store.visibleTickets;
+    final firebaseUser = FirebaseAuth.instance.currentUser;
 
-    // Calculate KPIs
-    final totalTickets = tickets.length;
-    final newTickets = tickets
-        .where((t) => t.status == TicketStatus.newTicket)
-        .length;
-    final pendingTickets = tickets
-        .where((t) => t.status == TicketStatus.assigned)
-        .length;
-    final inProgressTickets = tickets
-        .where((t) => t.status == TicketStatus.inProgress)
-        .length;
-    final resolvedTickets = tickets
-        .where(
-          (t) =>
-              t.status == TicketStatus.resolved ||
-              t.status == TicketStatus.closed,
-        )
-        .length;
+    if (firebaseUser == null) {
+      return const Scaffold(body: Center(child: Text('User not logged in')));
+    }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. Header + Notification Icon
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 60, 20, 30),
-              decoration: const BoxDecoration(
-                color: Color(0xFF005CAB),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(firebaseUser.uid)
+          .snapshots(),
+      builder: (context, userSnapshot) {
+        final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+        final supervisorName =
+            (userData?['fullName'] ?? firebaseUser.email ?? 'Supervisor')
+                .toString();
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('tickets')
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, ticketSnapshot) {
+            if (ticketSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            if (ticketSnapshot.hasError) {
+              return Scaffold(
+                body: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'Error: ${ticketSnapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Welcome back,",
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        currentUser?.name ?? "Supervisor",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.notifications_none_rounded,
-                        color: Colors.white,
-                      ),
-                      onPressed: () {
-                        // Notifications
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
+              );
+            }
 
-            const SizedBox(height: 20),
+            final docs = ticketSnapshot.data?.docs ?? [];
 
-            // 2. KPI Summary
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Overview",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+            final tickets = docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return {
+                'id': doc.id,
+                'title': (data['title'] ?? '').toString(),
+                'status': (data['status'] ?? 'NEW').toString().toUpperCase(),
+                'technicianId': data['technicianId'],
+                'technicianName': (data['technicianName'] ?? '').toString(),
+                'createdAt': data['createdAt'],
+              };
+            }).toList();
 
-                  // Top row of KPIs
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildKPICard(
-                          "Total Tickets",
-                          totalTickets,
-                          Icons.confirmation_number_outlined,
-                          Colors.blue,
+            final totalTickets = tickets.length;
+            final newTickets = tickets
+                .where((t) => t['status'] == 'NEW')
+                .length;
+            final assignedTickets = tickets
+                .where((t) => t['status'] == 'ASSIGNED')
+                .length;
+            final inProgressTickets = tickets
+                .where((t) => t['status'] == 'IN_PROGRESS')
+                .length;
+            final resolvedTickets = tickets
+                .where(
+                  (t) => t['status'] == 'RESOLVED' || t['status'] == 'CLOSED',
+                )
+                .length;
+            final weeklyCounts = _getWeeklyTicketCounts(tickets);
+            final maxWeeklyCount = weeklyCounts.values.isEmpty
+                ? 0
+                : weeklyCounts.values.reduce((a, b) => a > b ? a : b);
+
+            return Scaffold(
+              backgroundColor: const Color(0xFFF5F5F5),
+              body: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Header + Notification Icon
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(20, 60, 20, 30),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF005CAB),
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(30),
+                          bottomRight: Radius.circular(30),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildKPICard(
-                          "New Complaints",
-                          newTickets,
-                          Icons.new_releases_outlined,
-                          Colors.red,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Bottom row of KPIs
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildKPICard(
-                          "Pending",
-                          pendingTickets,
-                          Icons.pending_actions,
-                          Colors.orange,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildKPICard(
-                          "In Progress",
-                          inProgressTickets,
-                          Icons.engineering_outlined,
-                          Colors.purple,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildKPICard(
-                          "Resolved",
-                          resolvedTickets,
-                          Icons.check_circle_outline,
-                          Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // 3. Quick View Charts
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Quick Analytics",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Status Distribution (Horizontal Bar)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Status Distribution",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Welcome back,",
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                supervisorName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Visual mock of a stacked bar chart
-                        if (totalTickets > 0)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Row(
-                              children: [
-                                if (newTickets > 0)
-                                  Expanded(
-                                    flex: newTickets,
-                                    child: Container(
-                                      height: 12,
-                                      color: Colors.red,
-                                    ),
-                                  ),
-                                if (pendingTickets > 0)
-                                  Expanded(
-                                    flex: pendingTickets,
-                                    child: Container(
-                                      height: 12,
-                                      color: Colors.orange,
-                                    ),
-                                  ),
-                                if (inProgressTickets > 0)
-                                  Expanded(
-                                    flex: inProgressTickets,
-                                    child: Container(
-                                      height: 12,
-                                      color: Colors.purple,
-                                    ),
-                                  ),
-                                if (resolvedTickets > 0)
-                                  Expanded(
-                                    flex: resolvedTickets,
-                                    child: Container(
-                                      height: 12,
-                                      color: Colors.green,
-                                    ),
-                                  ),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.notifications_none_rounded,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                // Notifications
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // 2. KPI Summary
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Overview",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF333333),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Top row of KPIs
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildKPICard(
+                                  "Total Tickets",
+                                  totalTickets,
+                                  Icons.confirmation_number_outlined,
+                                  Colors.blue,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildKPICard(
+                                  "New Complaints",
+                                  newTickets,
+                                  Icons.new_releases_outlined,
+                                  Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Bottom row of KPIs
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildKPICard(
+                                  "Pending",
+                                  assignedTickets,
+                                  Icons.pending_actions,
+                                  Colors.orange,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildKPICard(
+                                  "In Progress",
+                                  inProgressTickets,
+                                  Icons.engineering_outlined,
+                                  Colors.purple,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildKPICard(
+                                  "Resolved",
+                                  resolvedTickets,
+                                  Icons.check_circle_outline,
+                                  Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // 3. Quick View Charts
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Quick Analytics",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF333333),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Status Distribution (Horizontal Bar)
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
                               ],
                             ),
-                          )
-                        else
-                          Container(
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "Status Distribution",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                if (totalTickets > 0)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Row(
+                                      children: [
+                                        if (newTickets > 0)
+                                          Expanded(
+                                            flex: newTickets,
+                                            child: Container(
+                                              height: 12,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        if (assignedTickets > 0)
+                                          Expanded(
+                                            flex: assignedTickets,
+                                            child: Container(
+                                              height: 12,
+                                              color: Colors.blue,
+                                            ),
+                                          ),
+                                        if (inProgressTickets > 0)
+                                          Expanded(
+                                            flex: inProgressTickets,
+                                            child: Container(
+                                              height: 12,
+                                              color: Colors.purple,
+                                            ),
+                                          ),
+                                        if (resolvedTickets > 0)
+                                          Expanded(
+                                            flex: resolvedTickets,
+                                            child: Container(
+                                              height: 12,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  Container(
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[300],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 8,
+                                  children: [
+                                    _buildLegendItem("New", Colors.red),
+                                    _buildLegendItem("Assigned", Colors.blue),
+                                    _buildLegendItem(
+                                      "In Progress",
+                                      Colors.purple,
+                                    ),
+                                    _buildLegendItem("Resolved", Colors.green),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
 
-                        const SizedBox(height: 16),
-                        // Legend
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
-                          children: [
-                            _buildLegendItem("New", Colors.red),
-                            _buildLegendItem("Pending", Colors.orange),
-                            _buildLegendItem("In Progress", Colors.purple),
-                            _buildLegendItem("Resolved", Colors.green),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                          const SizedBox(height: 16),
 
-                  const SizedBox(height: 16),
-
-                  // Ticket Trends (Mock Bar Chart)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                          // Ticket Trends (Mock Bar Chart)
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      "Weekly Ticket Volume",
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.bar_chart_rounded,
+                                      color: Colors.grey[400],
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    _buildTrendBar(
+                                      "Mon",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Mon']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                    _buildTrendBar(
+                                      "Tue",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Tue']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                    _buildTrendBar(
+                                      "Wed",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Wed']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                    _buildTrendBar(
+                                      "Thu",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Thu']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                    _buildTrendBar(
+                                      "Fri",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Fri']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                    _buildTrendBar(
+                                      "Sat",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Sat']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                    _buildTrendBar(
+                                      "Sun",
+                                      _getBarHeightFactor(
+                                        weeklyCounts['Sun']!,
+                                        maxWeeklyCount,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              "Weekly Ticket Volume",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey,
+
+                    const SizedBox(height: 32),
+
+                    // 4. Recent Tickets
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "Recent Tickets",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF333333),
+                                ),
                               ),
+                              TextButton(
+                                onPressed: () {
+                                  // View all functionality
+                                },
+                                child: const Text(
+                                  "View All",
+                                  style: TextStyle(color: Color(0xFF005CAB)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          if (tickets.isEmpty)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(32.0),
+                                child: Text("No tickets found."),
+                              ),
+                            )
+                          else
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.only(bottom: 40),
+                              itemCount: tickets.length > 5
+                                  ? 5
+                                  : tickets.length,
+                              itemBuilder: (context, index) {
+                                return _buildRecentTicketCard(
+                                  context,
+                                  tickets[index],
+                                );
+                              },
                             ),
-                            Icon(
-                              Icons.bar_chart_rounded,
-                              color: Colors.grey[400],
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        // Visual mock of a vertical bar chart
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            _buildTrendBar("Mon", 0.4),
-                            _buildTrendBar("Tue", 0.7),
-                            _buildTrendBar("Wed", 0.5),
-                            _buildTrendBar("Thu", 0.9), // peak
-                            _buildTrendBar("Fri", 0.6),
-                            _buildTrendBar("Sat", 0.2),
-                            _buildTrendBar("Sun", 0.1),
-                          ],
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // 4. Recent Tickets
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Recent Tickets",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF333333),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          // View all functionality
-                        },
-                        child: const Text(
-                          "View All",
-                          style: TextStyle(color: Color(0xFF005CAB)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Ticket List
-                  if (tickets.isEmpty)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: Text("No tickets found."),
-                      ),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(bottom: 40),
-                      itemCount: tickets.length > 5
-                          ? 5
-                          : tickets.length, // Show up to 5
-                      itemBuilder: (context, index) {
-                        return _buildRecentTicketCard(
-                          context,
-                          store,
-                          tickets[index],
-                        );
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      // Floating Action Button to create a ticket (moved from inline to standard FAB)
+            );
+          },
+        );
+      },
     );
   }
 
@@ -493,22 +588,10 @@ class SupervisorHomeScreen extends StatelessWidget {
 
   Widget _buildRecentTicketCard(
     BuildContext context,
-    InMemoryStore store,
-    Ticket ticket,
+    Map<String, dynamic> ticket,
   ) {
-    // Look up technician name if assigned
-    String? assignedName;
-    if (ticket.assignedTo != null) {
-      final tech = store.technicians.firstWhere(
-        (u) => u.id == ticket.assignedTo,
-        orElse: () => store.users.firstWhere(
-          (u) => u.id == ticket.assignedTo,
-          orElse: () =>
-              AppUser(id: '', name: 'Unknown', role: UserRole.technician),
-        ),
-      );
-      assignedName = tech.name;
-    }
+    final assignedName = (ticket['technicianName'] ?? '').toString();
+    final status = (ticket['status'] ?? 'NEW').toString().toUpperCase();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -528,7 +611,11 @@ class SupervisorHomeScreen extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            Navigator.pushNamed(context, '/admin/ticket', arguments: ticket.id);
+            Navigator.pushNamed(
+              context,
+              '/supervisor/ticket',
+              arguments: ticket['id'],
+            );
           },
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -536,11 +623,10 @@ class SupervisorHomeScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Text(
-                        ticket.title,
+                        (ticket['title'] ?? '').toString(),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -551,7 +637,7 @@ class SupervisorHomeScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _buildStatusBadge(ticket.status),
+                    _buildStatusBadge(status),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -565,20 +651,20 @@ class SupervisorHomeScreen extends StatelessWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        ticket.assignedTo != null
+                        assignedName.isNotEmpty
                             ? "Assigned: $assignedName"
                             : "Unassigned",
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
                       ),
                     ),
-                    if (ticket.status == TicketStatus.newTicket)
+                    if (status == 'NEW')
                       SizedBox(
                         height: 30,
                         child: TextButton(
                           onPressed: () => Navigator.pushNamed(
                             context,
-                            '/admin/assign',
-                            arguments: ticket.id,
+                            '/supervisor/assign',
+                            arguments: ticket['id'],
                           ),
                           style: TextButton.styleFrom(
                             foregroundColor: const Color(0xFFFF6600),
@@ -586,13 +672,12 @@ class SupervisorHomeScreen extends StatelessWidget {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            backgroundColor: const Color(
-                              0xFFFF6600,
-                            ).withOpacity(0.1),
+                            backgroundColor: const Color(0xFFFF6600),
                           ),
                           child: const Text(
                             "Assign",
                             style: TextStyle(
+                              color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -609,24 +694,34 @@ class SupervisorHomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusBadge(TicketStatus status) {
+  Widget _buildStatusBadge(String status) {
     Color color;
+    String label;
+
     switch (status) {
-      case TicketStatus.newTicket:
+      case 'NEW':
         color = Colors.red;
+        label = 'New';
         break;
-      case TicketStatus.assigned:
-        color = Colors.orange;
+      case 'ASSIGNED':
+        color = Colors.blue;
+        label = 'Assigned';
         break;
-      case TicketStatus.inProgress:
+      case 'IN_PROGRESS':
         color = Colors.purple;
+        label = 'In Progress';
         break;
-      case TicketStatus.resolved:
+      case 'RESOLVED':
         color = Colors.green;
+        label = 'Resolved';
         break;
-      case TicketStatus.closed:
+      case 'CLOSED':
         color = Colors.grey;
+        label = 'Closed';
         break;
+      default:
+        color = Colors.grey;
+        label = status;
     }
 
     return Container(
@@ -637,7 +732,7 @@ class SupervisorHomeScreen extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
-        status.displayName,
+        label,
         style: TextStyle(
           color: color,
           fontSize: 10,
@@ -645,5 +740,54 @@ class SupervisorHomeScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Map<String, int> _getWeeklyTicketCounts(List<Map<String, dynamic>> tickets) {
+    final counts = {
+      'Mon': 0,
+      'Tue': 0,
+      'Wed': 0,
+      'Thu': 0,
+      'Fri': 0,
+      'Sat': 0,
+      'Sun': 0,
+    };
+
+    for (final ticket in tickets) {
+      final createdAt = ticket['createdAt'];
+      if (createdAt is! Timestamp) continue;
+
+      final date = createdAt.toDate();
+      switch (date.weekday) {
+        case DateTime.monday:
+          counts['Mon'] = counts['Mon']! + 1;
+          break;
+        case DateTime.tuesday:
+          counts['Tue'] = counts['Tue']! + 1;
+          break;
+        case DateTime.wednesday:
+          counts['Wed'] = counts['Wed']! + 1;
+          break;
+        case DateTime.thursday:
+          counts['Thu'] = counts['Thu']! + 1;
+          break;
+        case DateTime.friday:
+          counts['Fri'] = counts['Fri']! + 1;
+          break;
+        case DateTime.saturday:
+          counts['Sat'] = counts['Sat']! + 1;
+          break;
+        case DateTime.sunday:
+          counts['Sun'] = counts['Sun']! + 1;
+          break;
+      }
+    }
+
+    return counts;
+  }
+
+  double _getBarHeightFactor(int count, int maxCount) {
+    if (maxCount == 0) return 0.1;
+    return count / maxCount < 0.1 ? 0.1 : count / maxCount;
   }
 }

@@ -1,9 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../data/in_memory_store.dart';
-import '../../models/ticket.dart';
-import '../../models/user.dart';
-import '../../utils/enums.dart';
 
 class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -19,134 +15,175 @@ class _SupervisorTicketDetailScreenState
     extends State<SupervisorTicketDetailScreen> {
   bool _isUpdating = false;
 
-  void _handleCloseTicket(InMemoryStore store) {
+  Future<void> _handleCloseTicket() async {
     setState(() => _isUpdating = true);
-    Future.delayed(const Duration(milliseconds: 500), () {
-      store.updateTicketStatus(
-        ticketId: widget.ticketId,
-        status: TicketStatus.closed,
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('tickets')
+          .doc(widget.ticketId)
+          .update({
+            'status': 'CLOSED',
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+      if (!mounted) return;
+
+      setState(() => _isUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Ticket closed successfully"),
+          backgroundColor: Colors.green,
+        ),
       );
-      if (mounted) {
-        setState(() => _isUpdating = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Ticket closed successfully"),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _isUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to close ticket: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-    final ticket = store.getTicketById(widget.ticketId);
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('tickets')
+          .doc(widget.ticketId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-    if (ticket == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text("Error")),
-        body: const Center(child: Text("Ticket not found")),
-      );
-    }
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Error")),
+            body: Center(child: Text("Error: ${snapshot.error}")),
+          );
+        }
 
-    // Mocked data for fields not in the Ticket model yet
-    const mockCategory = 'Hardware Issue';
-    const mockAddress = '123 Tech Lane, Block B, Floor 4';
-    const mockPriority = 'High';
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Error")),
+            body: const Center(child: Text("Ticket not found")),
+          );
+        }
 
-    // Find assigned technician name
-    String? assignedTechName;
-    if (ticket.assignedTo != null) {
-      final tech = store.users.firstWhere(
-        (u) => u.id == ticket.assignedTo,
-        orElse: () => const AppUser(
-          id: '',
-          name: 'Unknown Technician',
-          role: UserRole.technician,
-        ),
-      );
-      assignedTechName = tech.name;
-    }
+        final data = snapshot.data!.data() as Map<String, dynamic>;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text(
-          'Supervisor View',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 1. Primary Action (Assign or Close)
-            if (ticket.status == TicketStatus.newTicket)
-              _buildActionCard(
-                title: "Ticket is Unassigned",
-                buttonLabel: "ASSIGN TECHNICIAN",
-                icon: Icons.person_add_alt_1_rounded,
-                color: const Color(0xFFFF6600),
-                onPressed: () {
-                  Navigator.pushNamed(
-                    context,
-                    '/admin/assign',
-                    arguments: ticket.id,
-                  );
-                },
-              )
-            else if (ticket.status == TicketStatus.resolved)
-              _buildActionCard(
-                title: "Ticket Resolved by Technician",
-                buttonLabel: "CLOSE TICKET",
-                icon: Icons.check_circle_outline,
-                color: Colors.green,
-                onPressed: _isUpdating ? null : () => _handleCloseTicket(store),
-              )
-            else if (ticket.status == TicketStatus.closed)
-              _buildInfoStatusCard(
-                "This ticket is Closed",
-                Icons.lock_outline,
-                Colors.grey,
-              )
-            else
-              _buildInfoStatusCard(
-                "Technician is currently working on this",
-                Icons.engineering_outlined,
-                Colors.purple,
-              ),
+        final status = (data['status'] ?? 'NEW').toString().toUpperCase();
+        final title = (data['title'] ?? 'No Title').toString();
+        final description = (data['description'] ?? '').toString();
+        final category = (data['category'] ?? '-').toString();
+        final address = (data['address'] ?? '-').toString();
+        final customerName = (data['customerName'] ?? '-').toString();
+        final technicianName = (data['technicianName'] ?? '').toString();
+        final technicianId = (data['technicianId'] ?? '').toString();
+        final createdAt = data['createdAt'] as Timestamp?;
+        final updatedAt = data['updatedAt'] as Timestamp?;
 
-            const SizedBox(height: 24),
+        final hasTechnician =
+            technicianId.trim().isNotEmpty || technicianName.trim().isNotEmpty;
 
-            // 2. Ticket Status & Progress Timeline
-            _buildSectionTitle('Ticket Progress'),
-            _buildStatusTimelineCard(ticket.status),
-            const SizedBox(height: 24),
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F5F5),
+          appBar: AppBar(
+            title: const Text(
+              'Supervisor View',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: const Color(0xFF005CAB),
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (status == 'NEW')
+                  _buildActionCard(
+                    title: "Ticket is Unassigned",
+                    buttonLabel: "ASSIGN TECHNICIAN",
+                    icon: Icons.person_add_alt_1_rounded,
+                    color: const Color(0xFFFF6600),
+                    onPressed: () {
+                      Navigator.pushNamed(
+                        context,
+                        '/supervisor/assign',
+                        arguments: widget.ticketId,
+                      );
+                    },
+                  )
+                else if (status == 'RESOLVED')
+                  _buildActionCard(
+                    title: "Ticket Resolved by Technician",
+                    buttonLabel: "CLOSE TICKET",
+                    icon: Icons.check_circle_outline,
+                    color: Colors.green,
+                    onPressed: _isUpdating ? null : _handleCloseTicket,
+                  )
+                else if (status == 'CLOSED')
+                  _buildInfoStatusCard(
+                    "This ticket is Closed",
+                    Icons.lock_outline,
+                    Colors.grey,
+                  )
+                else
+                  _buildInfoStatusCard(
+                    "Technician is currently working on this",
+                    Icons.engineering_outlined,
+                    Colors.purple,
+                  ),
 
-            // 3. Technician Info (if assigned)
-            if (ticket.assignedTo != null) ...[
-              _buildSectionTitle('Assigned Technician'),
-              _buildTechnicianCard(assignedTechName ?? "Unknown"),
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 24),
 
-            // 4. Ticket Info
-            _buildSectionTitle('Ticket Info'),
-            _buildInfoCard(ticket, mockCategory, mockAddress, mockPriority),
-            const SizedBox(height: 24),
+                _buildSectionTitle('Ticket Progress'),
+                _buildStatusTimelineCard(status),
+                const SizedBox(height: 24),
 
-            // 5. Activity Log
-            _buildSectionTitle('Activity Log'),
-            _buildActivityLogCard(ticket, assignedTechName),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
+                if (hasTechnician) ...[
+                  _buildSectionTitle('Assigned Technician'),
+                  _buildTechnicianCard(
+                    technicianName.isNotEmpty ? technicianName : technicianId,
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
+                _buildSectionTitle('Ticket Info'),
+                _buildInfoCard(
+                  ticketId: widget.ticketId,
+                  customerName: customerName,
+                  category: category,
+                  address: address,
+                  createdAt: createdAt,
+                  title: title,
+                  description: description,
+                ),
+                const SizedBox(height: 24),
+
+                _buildSectionTitle('Activity Log'),
+                _buildActivityLogCard(
+                  status: status,
+                  createdAt: createdAt,
+                  updatedAt: updatedAt,
+                  technicianName: technicianName,
+                  hasTechnician: hasTechnician,
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -196,11 +233,13 @@ class _SupervisorTicketDetailScreenState
             children: [
               Icon(icon, color: color, size: 24),
               const SizedBox(width: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
             ],
@@ -219,10 +258,19 @@ class _SupervisorTicketDetailScreenState
                 ),
                 elevation: 0,
               ),
-              child: Text(
-                buttonLabel,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              child: _isUpdating && buttonLabel == "CLOSE TICKET"
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.4,
+                      ),
+                    )
+                  : Text(
+                      buttonLabel,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
             ),
           ),
         ],
@@ -247,30 +295,33 @@ class _SupervisorTicketDetailScreenState
     );
   }
 
-  Widget _buildStatusTimelineCard(TicketStatus currentStatus) {
+  Widget _buildStatusTimelineCard(String currentStatus) {
     final steps = [
-      {'title': 'Assigned', 'status': TicketStatus.assigned},
-      {'title': 'In Progress', 'status': TicketStatus.inProgress},
-      {'title': 'Resolved', 'status': TicketStatus.resolved},
+      {'title': 'New', 'status': 'NEW'},
+      {'title': 'Assigned', 'status': 'ASSIGNED'},
+      {'title': 'In Progress', 'status': 'IN_PROGRESS'},
+      {'title': 'Resolved', 'status': 'RESOLVED'},
     ];
 
     int currentStepIndex = 0;
     switch (currentStatus) {
-      case TicketStatus.newTicket:
+      case 'NEW':
         currentStepIndex = 0;
         break;
-      case TicketStatus.assigned:
+      case 'ASSIGNED':
         currentStepIndex = 1;
         break;
-      case TicketStatus.inProgress:
+      case 'IN_PROGRESS':
         currentStepIndex = 2;
         break;
-      case TicketStatus.resolved:
+      case 'RESOLVED':
         currentStepIndex = 3;
         break;
-      case TicketStatus.closed:
+      case 'CLOSED':
         currentStepIndex = 4;
         break;
+      default:
+        currentStepIndex = 0;
     }
 
     return _buildCard(
@@ -373,32 +424,26 @@ class _SupervisorTicketDetailScreenState
     );
   }
 
-  Widget _buildInfoCard(
-    Ticket ticket,
-    String category,
-    String address,
-    String priority,
-  ) {
+  Widget _buildInfoCard({
+    required String ticketId,
+    required String customerName,
+    required String category,
+    required String address,
+    required Timestamp? createdAt,
+    required String title,
+    required String description,
+  }) {
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow('Customer Name', 'Azka'),
+          _buildInfoRow('Customer Name', customerName),
           _buildDivider(),
-          _buildInfoRow('Ticket ID', '#${ticket.id.toUpperCase()}'),
+          _buildInfoRow('Ticket ID', '#${ticketId.toUpperCase()}'),
           _buildDivider(),
           _buildInfoRow('Category', category),
           _buildDivider(),
-          _buildInfoRow(
-            'Priority',
-            priority,
-            valueColor: const Color(0xFFFF6600),
-          ),
-          _buildDivider(),
-          _buildInfoRow(
-            'Submitted',
-            '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
-          ),
+          _buildInfoRow('Submitted', _formatTimestamp(createdAt)),
           _buildDivider(),
           _buildInfoRow('Address', address),
           _buildDivider(),
@@ -412,7 +457,7 @@ class _SupervisorTicketDetailScreenState
           ),
           const SizedBox(height: 8),
           Text(
-            ticket.title,
+            title,
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -421,7 +466,7 @@ class _SupervisorTicketDetailScreenState
           ),
           const SizedBox(height: 8),
           Text(
-            ticket.description,
+            description,
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[800],
@@ -439,20 +484,26 @@ class _SupervisorTicketDetailScreenState
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              color: Colors.grey,
-              fontWeight: FontWeight.bold,
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.grey,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              color: valueColor ?? const Color(0xFF333333),
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 14,
+                color: valueColor ?? const Color(0xFF333333),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -462,33 +513,47 @@ class _SupervisorTicketDetailScreenState
 
   Widget _buildDivider() => Divider(color: Colors.grey[100], height: 16);
 
-  Widget _buildActivityLogCard(Ticket ticket, String? techName) {
+  Widget _buildActivityLogCard({
+    required String status,
+    required Timestamp? createdAt,
+    required Timestamp? updatedAt,
+    required String technicianName,
+    required bool hasTechnician,
+  }) {
+    final createdDate = createdAt?.toDate();
+    final updatedDate = updatedAt?.toDate();
+
     final logs = [
       {
         'title': 'Ticket Created',
-        'date': ticket.createdAt,
+        'date': createdDate,
         'desc': 'Logged in system.',
       },
-      if (ticket.assignedTo != null)
+      if (hasTechnician)
         {
           'title': 'Assigned',
-          'date': ticket.updatedAt.subtract(const Duration(hours: 2)),
-          'desc': 'Assigned to $techName.',
+          'date': updatedDate,
+          'desc': technicianName.trim().isNotEmpty
+              ? 'Assigned to $technicianName.'
+              : 'Assigned to technician.',
         },
-      if (ticket.status == TicketStatus.inProgress ||
-          ticket.status == TicketStatus.resolved ||
-          ticket.status == TicketStatus.closed)
+      if (status == 'IN_PROGRESS' || status == 'RESOLVED' || status == 'CLOSED')
         {
           'title': 'Work Started',
-          'date': ticket.updatedAt.subtract(const Duration(hours: 1)),
+          'date': updatedDate,
           'desc': 'Technician is on site.',
         },
-      if (ticket.status == TicketStatus.resolved ||
-          ticket.status == TicketStatus.closed)
+      if (status == 'RESOLVED' || status == 'CLOSED')
         {
           'title': 'Resolved',
-          'date': ticket.updatedAt,
+          'date': updatedDate,
           'desc': 'Technician marked as resolved.',
+        },
+      if (status == 'CLOSED')
+        {
+          'title': 'Closed',
+          'date': updatedDate,
+          'desc': 'Supervisor closed the ticket.',
         },
     ].reversed.toList();
 
@@ -499,6 +564,8 @@ class _SupervisorTicketDetailScreenState
         itemCount: logs.length,
         itemBuilder: (context, index) {
           final isFirst = index == 0;
+          final logDate = logs[index]['date'] as DateTime?;
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: Row(
@@ -519,18 +586,21 @@ class _SupervisorTicketDetailScreenState
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            logs[index]['title'] as String,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: isFirst
-                                  ? const Color(0xFF333333)
-                                  : Colors.grey[600],
+                          Expanded(
+                            child: Text(
+                              logs[index]['title'] as String,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isFirst
+                                    ? const Color(0xFF333333)
+                                    : Colors.grey[600],
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
-                            '${(logs[index]['date'] as DateTime).day}/${(logs[index]['date'] as DateTime).month}',
+                            _formatShortDate(logDate),
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey[500],
@@ -551,5 +621,16 @@ class _SupervisorTicketDetailScreenState
         },
       ),
     );
+  }
+
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return '-';
+    final date = timestamp.toDate();
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  String _formatShortDate(DateTime? date) {
+    if (date == null) return '-';
+    return '${date.day}/${date.month}';
   }
 }

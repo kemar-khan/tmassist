@@ -48,7 +48,7 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => AssignTicketScreen(ticketId: args),
         );
-      case '/admin/ticket':
+      case '/supervisor/ticket':
         final ticketId = settings.arguments as String;
         return MaterialPageRoute(
           builder: (_) => SupervisorTicketDetailScreen(ticketId: ticketId),

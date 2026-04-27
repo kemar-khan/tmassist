@@ -1,8 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../data/in_memory_store.dart';
-import '../../models/ticket.dart';
-import '../../utils/enums.dart';
 
 class AssignedTicketsScreen extends StatefulWidget {
   const AssignedTicketsScreen({super.key});
@@ -16,20 +14,22 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-    final user = store.currentUser;
-    
-    // Get tickets assigned to this technician
-    final assignedTickets = store.tickets
-        .where((t) => t.assignedTo == user?.id)
-        .where((t) => t.title.toLowerCase().contains(_searchQuery.toLowerCase()) || 
-                      t.id.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    final currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Error")),
+        body: const Center(child: Text("User not logged in")),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('My Tasks', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'My Tasks',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: const Color(0xFF005CAB),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -60,22 +60,78 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
 
           // Ticket List
           Expanded(
-            child: assignedTickets.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: assignedTickets.length,
-                    itemBuilder: (context, index) {
-                      return _buildTicketCard(context, assignedTickets[index]);
-                    },
-                  ),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('tickets')
+                  .where('technicianId', isEqualTo: currentUser.uid)
+                  .orderBy('updatedAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Error: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data?.docs ?? [];
+
+                final assignedTickets = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final title = (data['title'] ?? '').toString().toLowerCase();
+                  final id = doc.id.toLowerCase();
+                  final query = _searchQuery.toLowerCase();
+
+                  return title.contains(query) || id.contains(query);
+                }).toList();
+
+                if (assignedTickets.isEmpty) {
+                  return _buildEmptyState();
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: assignedTickets.length,
+                  itemBuilder: (context, index) {
+                    final doc = assignedTickets[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    return _buildTicketCard(context, doc.id, data);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTicketCard(BuildContext context, Ticket ticket) {
+  Widget _buildTicketCard(
+    BuildContext context,
+    String ticketId,
+    Map<String, dynamic> data,
+  ) {
+    final title = (data['title'] ?? '').toString();
+    final description = (data['description'] ?? '').toString();
+    final address = (data['address'] ?? 'Cyberjaya, Selangor').toString();
+    final status = (data['status'] ?? 'ASSIGNED').toString().toUpperCase();
+    final createdAt = data['createdAt'];
+
+    String formattedDate = '-';
+    if (createdAt is Timestamp) {
+      final date = createdAt.toDate();
+      formattedDate = '${date.day}/${date.month}/${date.year}';
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -94,11 +150,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            Navigator.pushNamed(
-              context,
-              '/tech/ticket',
-              arguments: ticket.id,
-            );
+            Navigator.pushNamed(context, '/tech/ticket', arguments: ticketId);
           },
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -108,16 +160,16 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildStatusBadge(ticket.status),
+                    _buildStatusBadge(status),
                     Text(
-                      '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
+                      formattedDate,
                       style: TextStyle(color: Colors.grey[500], fontSize: 12),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  ticket.id,
+                  ticketId,
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[400],
@@ -126,7 +178,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  ticket.title,
+                  title,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
@@ -135,7 +187,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  ticket.description,
+                  description,
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey[600],
@@ -147,13 +199,23 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    const Icon(Icons.location_on_outlined, size: 16, color: Colors.orange),
-                    const SizedBox(width: 4),
-                    const Text(
-                      "Cyberjaya, Selangor", // Hardcoded for demo
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: Colors.orange,
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        address,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     const Text(
                       "View Details",
                       style: TextStyle(
@@ -162,7 +224,11 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                         fontSize: 13,
                       ),
                     ),
-                    const Icon(Icons.chevron_right, color: Color(0xFF005CAB), size: 18),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFF005CAB),
+                      size: 18,
+                    ),
                   ],
                 ),
               ],
@@ -173,23 +239,30 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
     );
   }
 
-  Widget _buildStatusBadge(TicketStatus status) {
+  Widget _buildStatusBadge(String status) {
     Color color;
+    String label;
+
     switch (status) {
-      case TicketStatus.assigned:
+      case 'ASSIGNED':
         color = Colors.blue;
+        label = 'ASSIGNED';
         break;
-      case TicketStatus.inProgress:
+      case 'IN_PROGRESS':
         color = Colors.purple;
+        label = 'IN PROGRESS';
         break;
-      case TicketStatus.resolved:
+      case 'RESOLVED':
         color = Colors.green;
+        label = 'RESOLVED';
         break;
-      case TicketStatus.closed:
+      case 'CLOSED':
         color = Colors.grey;
+        label = 'CLOSED';
         break;
       default:
         color = Colors.orange;
+        label = status;
     }
 
     return Container(
@@ -199,7 +272,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        status.displayName.toUpperCase(),
+        label,
         style: TextStyle(
           color: color,
           fontSize: 10,
@@ -214,7 +287,11 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.assignment_turned_in_outlined, size: 80, color: Colors.grey[300]),
+          Icon(
+            Icons.assignment_turned_in_outlined,
+            size: 80,
+            color: Colors.grey[300],
+          ),
           const SizedBox(height: 16),
           Text(
             "No active tasks",
