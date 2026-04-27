@@ -1,11 +1,6 @@
-// lib/features/customer/my_tickets_screen.dart
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../../data/in_memory_store.dart';
-import '../../models/ticket.dart';
-import '../../utils/enums.dart';
 
 class MyTicketsScreen extends StatefulWidget {
   const MyTicketsScreen({super.key});
@@ -16,9 +11,9 @@ class MyTicketsScreen extends StatefulWidget {
 
 class _MyTicketsScreenState extends State<MyTicketsScreen> {
   final TextEditingController _searchController = TextEditingController();
+
   String _searchQuery = '';
-  String _selectedFilter =
-      'All'; // 'All', 'Pending', 'Assigned', 'In Progress', 'Resolved'
+  String _selectedFilter = 'All';
 
   @override
   void dispose() {
@@ -28,67 +23,42 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-    final allTickets = store.tickets;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-    // Filter logic
-    List<Ticket> filteredTickets = allTickets.where((ticket) {
-      // Apply status filter
-      bool matchesFilter = false;
-      switch (_selectedFilter) {
-        case 'All':
-          matchesFilter = true;
-          break;
-        case 'Pending':
-          matchesFilter = ticket.status == TicketStatus.newTicket;
-          break;
-        case 'Assigned':
-          matchesFilter = ticket.status == TicketStatus.assigned;
-          break;
-        case 'In Progress':
-          matchesFilter = ticket.status == TicketStatus.inProgress;
-          break;
-        case 'Resolved':
-          matchesFilter =
-              ticket.status == TicketStatus.resolved ||
-              ticket.status == TicketStatus.closed;
-          break;
-      }
-
-      if (!matchesFilter) return false;
-
-      // Apply search query
-      if (_searchQuery.isEmpty) return true;
-      final query = _searchQuery.toLowerCase();
-      return ticket.title.toLowerCase().contains(query) ||
-          ticket.id.toLowerCase().contains(query);
-    }).toList();
+    if (currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('My Tickets'),
+          backgroundColor: const Color(0xFF005CAB),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: Text('No logged in user found.')),
+      );
+    }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // Match theme background
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         title: const Text(
           'My Tickets',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF005CAB), // Primary Blue
+        backgroundColor: const Color(0xFF005CAB),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: Column(
         children: [
-          // Search and Filter Section
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.white,
             child: Column(
               children: [
-                // Search Bar
                 TextField(
                   controller: _searchController,
                   onChanged: (value) => setState(() => _searchQuery = value),
                   decoration: InputDecoration(
-                    hintText: 'Search by title or ID...',
+                    hintText: 'Search by title...',
                     prefixIcon: const Icon(Icons.search, color: Colors.grey),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -109,35 +79,91 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Filter Chips
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
                       _buildFilterChip('All'),
-                      _buildFilterChip('Pending'),
-                      _buildFilterChip('Assigned'),
-                      _buildFilterChip('In Progress'),
-                      _buildFilterChip('Resolved'),
+                      _buildFilterChip('NEW'),
+                      _buildFilterChip('ASSIGNED'),
+                      _buildFilterChip('IN_PROGRESS'),
+                      _buildFilterChip('RESOLVED'),
+                      _buildFilterChip('CLOSED'),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-
-          // Ticket List
           Expanded(
-            child: filteredTickets.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredTickets.length,
-                    itemBuilder: (context, index) {
-                      return _buildTicketCard(filteredTickets[index]);
-                    },
-                  ),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('tickets')
+                  .where('customerId', isEqualTo: currentUser.uid)
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'Something went wrong:\n${snapshot.error}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return _buildEmptyState(
+                    title: 'No tickets found',
+                    subtitle: 'You have not submitted any tickets yet.',
+                  );
+                }
+
+                final docs = snapshot.data!.docs;
+
+                final filteredTickets = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+
+                  final title = (data['title'] ?? '').toString().toLowerCase();
+                  final status = (data['status'] ?? '')
+                      .toString()
+                      .toUpperCase();
+                  final query = _searchQuery.trim().toLowerCase();
+
+                  final matchesSearch = query.isEmpty || title.contains(query);
+
+                  final matchesFilter =
+                      _selectedFilter == 'All' || status == _selectedFilter;
+
+                  return matchesSearch && matchesFilter;
+                }).toList();
+
+                if (filteredTickets.isEmpty) {
+                  return _buildEmptyState(
+                    title: 'No tickets found',
+                    subtitle: 'Try adjusting your filters or search query.',
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filteredTickets.length,
+                  itemBuilder: (context, index) {
+                    final doc = filteredTickets[index];
+                    final data = doc.data() as Map<String, dynamic>;
+
+                    return _buildTicketCard(context, doc.id, data);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -146,11 +172,12 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
 
   Widget _buildFilterChip(String label) {
     final isSelected = _selectedFilter == label;
+
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: ChoiceChip(
         label: Text(
-          label,
+          _formatFilterLabel(label),
           style: TextStyle(
             color: isSelected ? Colors.white : Colors.black87,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -162,7 +189,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
             setState(() => _selectedFilter = label);
           }
         },
-        selectedColor: const Color(0xFF005CAB), // Primary Blue
+        selectedColor: const Color(0xFF005CAB),
         backgroundColor: Colors.grey[100],
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
@@ -174,7 +201,22 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     );
   }
 
-  Widget _buildTicketCard(Ticket ticket) {
+  Widget _buildTicketCard(
+    BuildContext context,
+    String ticketId,
+    Map<String, dynamic> data,
+  ) {
+    final title = (data['title'] ?? 'No Title').toString();
+    final description = (data['description'] ?? '').toString();
+    final status = (data['status'] ?? 'UNKNOWN').toString().toUpperCase();
+    final createdAt = data['createdAt'];
+
+    String formattedDate = 'Date not available';
+    if (createdAt is Timestamp) {
+      final date = createdAt.toDate();
+      formattedDate = '${date.day}/${date.month}/${date.year}';
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -193,7 +235,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
           Navigator.pushNamed(
             context,
             '/customer/ticket_details',
-            arguments: ticket.id,
+            arguments: ticketId,
           );
         },
         borderRadius: BorderRadius.circular(16),
@@ -205,20 +247,24 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    ticket.id,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      ticketId,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  _buildStatusBadge(ticket.status),
+                  const SizedBox(width: 8),
+                  _buildStatusBadge(status),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
-                ticket.title,
+                title,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -227,7 +273,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                ticket.description,
+                description,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -251,7 +297,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
+                        formattedDate,
                         style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       ),
                     ],
@@ -263,7 +309,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF005CAB), // Primary Blue
+                          color: Color(0xFF005CAB),
                         ),
                       ),
                       SizedBox(width: 4),
@@ -283,24 +329,27 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     );
   }
 
-  Widget _buildStatusBadge(TicketStatus status) {
+  Widget _buildStatusBadge(String status) {
     Color color;
+
     switch (status) {
-      case TicketStatus.newTicket:
+      case 'NEW':
         color = Colors.orange;
         break;
-      case TicketStatus.assigned:
+      case 'ASSIGNED':
         color = Colors.blue;
         break;
-      case TicketStatus.inProgress:
+      case 'IN_PROGRESS':
         color = Colors.purple;
         break;
-      case TicketStatus.resolved:
+      case 'RESOLVED':
         color = Colors.green;
         break;
-      case TicketStatus.closed:
+      case 'CLOSED':
         color = Colors.grey;
         break;
+      default:
+        color = Colors.black54;
     }
 
     return Container(
@@ -310,7 +359,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status.displayName.toUpperCase(),
+        _formatFilterLabel(status).toUpperCase(),
         style: TextStyle(
           color: color,
           fontSize: 10,
@@ -320,7 +369,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({required String title, required String subtitle}) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -328,7 +377,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
           Icon(Icons.search_off_rounded, size: 60, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            "No tickets found",
+            title,
             style: TextStyle(
               color: Colors.grey[400],
               fontWeight: FontWeight.bold,
@@ -337,11 +386,29 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            "Try adjusting your filters or search query.",
+            subtitle,
             style: TextStyle(color: Colors.grey[400], fontSize: 13),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
+  }
+
+  String _formatFilterLabel(String label) {
+    switch (label) {
+      case 'IN_PROGRESS':
+        return 'In Progress';
+      case 'NEW':
+        return 'New';
+      case 'ASSIGNED':
+        return 'Assigned';
+      case 'RESOLVED':
+        return 'Resolved';
+      case 'CLOSED':
+        return 'Closed';
+      default:
+        return label;
+    }
   }
 }

@@ -1,11 +1,7 @@
-// lib/features/customer/customer_home_screen.dart
-
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../../data/in_memory_store.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/ticket.dart';
-import '../../models/user.dart';
 import '../../utils/enums.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -16,296 +12,347 @@ class CustomerHomeScreen extends StatefulWidget {
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  TicketStatus _parseStatus(String status) {
+    switch (status.toUpperCase()) {
+      case 'NEW':
+        return TicketStatus.newTicket;
+      case 'ASSIGNED':
+        return TicketStatus.assigned;
+      case 'IN_PROGRESS':
+        return TicketStatus.inProgress;
+      case 'RESOLVED':
+        return TicketStatus.resolved;
+      case 'CLOSED':
+        return TicketStatus.closed;
+      default:
+        return TicketStatus.newTicket;
+    }
+  }
+
+  Ticket _mapDocToTicket(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Ticket(
+      id: doc.id,
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      status: _parseStatus(data['status'] ?? 'NEW'),
+      createdBy: data['customerId'] ?? '',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      assignedTo: data['technicianId'],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-    final user =
-        store.currentUser ??
-        const AppUser(
-          id: 'u_customer_1',
-          name: 'John Doe',
-          role: UserRole
-              .admin, // Note: UserRole enum only has admin/technician in enums.dart
-        );
-    final tickets = store.tickets;
+    final firebaseUser = FirebaseAuth.instance.currentUser;
 
-    // Calculate ticket counts
-    final pendingCount = tickets
-        .where(
-          (t) =>
-              t.status == TicketStatus.newTicket ||
-              t.status == TicketStatus.assigned,
-        )
-        .length;
-    final inProgressCount = tickets
-        .where((t) => t.status == TicketStatus.inProgress)
-        .length;
-    final resolvedCount = tickets
-        .where(
-          (t) =>
-              t.status == TicketStatus.resolved ||
-              t.status == TicketStatus.closed,
-        )
-        .length;
+    if (firebaseUser == null) {
+      return const Scaffold(body: Center(child: Text('User not logged in')));
+    }
 
-    // Get recent tickets (last 3)
-    final recentTickets = tickets.take(3).toList();
+    final userName = firebaseUser.email?.split('@').first ?? 'User';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
-      body: Column(
-        children: [
-          // Curved Header Section
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
-            decoration: const BoxDecoration(
-              color: Color(0xFF005CAB),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(30),
-                bottomRight: Radius.circular(30),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Welcome Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hi, ${user.name.split(' ').first} 👋',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Customer Portal',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withOpacity(0.8),
-                          ),
-                        ),
-                      ],
-                    ),
-                    IconButton(
-                      onPressed: () {},
-                      icon: const Icon(
-                        Icons.notifications_none_rounded,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // Profile Card
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('tickets')
+            .where('customerId', isEqualTo: firebaseUser.uid)
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          final tickets = (snapshot.data?.docs ?? [])
+              .map((doc) => _mapDocToTicket(doc))
+              .toList();
+
+          // Calculate ticket counts
+          final pendingCount = tickets
+              .where(
+                (t) =>
+                    t.status == TicketStatus.newTicket ||
+                    t.status == TicketStatus.assigned,
+              )
+              .length;
+          final inProgressCount =
+              tickets.where((t) => t.status == TicketStatus.inProgress).length;
+          final resolvedCount = tickets
+              .where(
+                (t) =>
+                    t.status == TicketStatus.resolved ||
+                    t.status == TicketStatus.closed,
+              )
+              .length;
+
+          // Get recent tickets (last 3)
+          final recentTickets = tickets.take(3).toList();
+
+          return Column(
+            children: [
+              // Curved Header Section
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF005CAB),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
                   ),
-                  child: Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 25,
-                        backgroundColor: Color(0xFFFF6600),
-                        child: Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
+                ),
+                child: Column(
+                  children: [
+                    // Welcome Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              user.name,
+                              'Hi, ${userName.split(' ').first} 👋',
                               style: const TextStyle(
-                                fontSize: 18,
+                                fontSize: 24,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF005CAB),
+                                color: Colors.white,
                               ),
                             ),
-                            const Text(
-                              "Valued Customer",
+                            const SizedBox(height: 4),
+                            Text(
+                              'Customer Portal',
                               style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 14,
+                                fontSize: 12,
+                                color: Colors.white.withOpacity(0.8),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF005CAB).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          "Active",
-                          style: TextStyle(
-                            color: Color(0xFF005CAB),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                        IconButton(
+                          onPressed: () {},
+                          icon: const Icon(
+                            Icons.notifications_none_rounded,
+                            color: Colors.white,
+                            size: 28,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Summary Counters
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildCounter("Pending", pendingCount, Colors.orange),
-                    _buildCounter("In Progress", inProgressCount, Colors.blue),
-                    _buildCounter("Resolved", resolvedCount, Colors.green),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Main Content
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Submit New Ticket Card (Prominent)
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pushNamed(context, '/customer/submit');
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Profile Card
+                    Container(
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6600), Color(0xFFFF8800)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFFF6600).withOpacity(0.3),
+                            color: Colors.black.withOpacity(0.1),
                             blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            offset: const Offset(0, 5),
                           ),
                         ],
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.add_task_rounded,
+                          const CircleAvatar(
+                            radius: 25,
+                            backgroundColor: Color(0xFFFF6600),
+                            child: Icon(
+                              Icons.person,
                               color: Colors.white,
-                              size: 28,
+                              size: 30,
                             ),
                           ),
                           const SizedBox(width: 16),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Submit New Ticket',
-                                  style: TextStyle(
+                                  userName,
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: Color(0xFF005CAB),
                                   ),
                                 ),
-                                Text(
-                                  'Need help? Report an issue now.',
+                                const Text(
+                                  "Valued Customer",
                                   style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.white,
+                                    color: Colors.grey,
+                                    fontSize: 14,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            color: Colors.white,
-                            size: 18,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF005CAB).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              "Active",
+                              style: TextStyle(
+                                color: Color(0xFF005CAB),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  // Recent Tickets Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Recent Tickets',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF333333),
+                    const SizedBox(height: 20),
+                    // Summary Counters
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildCounter("Pending", pendingCount, Colors.orange),
+                        _buildCounter(
+                          "In Progress",
+                          inProgressCount,
+                          Colors.blue,
                         ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/customer/tickets');
+                        _buildCounter("Resolved", resolvedCount, Colors.green),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Main Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Submit New Ticket Card (Prominent)
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/customer/submit');
                         },
-                        child: const Text(
-                          'View All',
-                          style: TextStyle(
-                            color: Color(0xFF005CAB),
-                            fontWeight: FontWeight.bold,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFF6600), Color(0xFFFF8800)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFFF6600).withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.add_task_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Submit New Ticket',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Need help? Report an issue now.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ],
                           ),
                         ),
                       ),
+
+                      const SizedBox(height: 28),
+
+                      // Recent Tickets Section
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Recent Tickets',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF333333),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/customer/tickets');
+                            },
+                            child: const Text(
+                              'View All',
+                              style: TextStyle(
+                                color: Color(0xFF005CAB),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (recentTickets.isEmpty)
+                        _buildEmptyState()
+                      else
+                        ...recentTickets.map(
+                          (ticket) => _buildRecentTicketCard(ticket),
+                        ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (recentTickets.isEmpty)
-                    _buildEmptyState()
-                  else
-                    ...recentTickets.map(
-                      (ticket) => _buildRecentTicketCard(ticket),
-                    ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
-
     );
   }
 
@@ -459,3 +506,4 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 }
+

@@ -153,7 +153,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<TicketStatus>(
-            value: ticket.status,
+            initialValue: ticket.status,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.sync_rounded, color: Colors.orange),
               filled: true,

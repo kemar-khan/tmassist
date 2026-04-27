@@ -5,8 +5,8 @@ import '../../models/ticket.dart';
 import '../../models/user.dart';
 import '../../utils/enums.dart';
 
-class AdminHomeScreen extends StatelessWidget {
-  const AdminHomeScreen({super.key});
+class SupervisorHomeScreen extends StatelessWidget {
+  const SupervisorHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -528,11 +528,7 @@ class AdminHomeScreen extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            Navigator.pushNamed(
-              context,
-              '/admin/ticket',
-              arguments: ticket.id,
-            );
+            Navigator.pushNamed(context, '/admin/ticket', arguments: ticket.id);
           },
           child: Padding(
             padding: const EdgeInsets.all(16),

@@ -1,11 +1,5 @@
-// lib/features/customer/ticket_details_screen.dart
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import '../../data/in_memory_store.dart';
-import '../../models/ticket.dart';
-import '../../utils/enums.dart';
 
 class TicketDetailsScreen extends StatelessWidget {
   final String ticketId;
@@ -14,73 +8,109 @@ class TicketDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final store = context.watch<InMemoryStore>();
-
-    // Find ticket or use a dummy if not found
-    final Ticket ticket = store.tickets.firstWhere(
-      (t) => t.id == ticketId,
-      orElse: () => Ticket(
-        id: ticketId,
-        title: 'Unknown Ticket',
-        description: 'Details not found.',
-        status: TicketStatus.newTicket,
-        createdBy: 'system',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    );
-
-    // Mocked data for fields not in the Ticket model yet
-    const mockCategory = 'Hardware Issue';
-    const mockAddress = '123 Tech Lane, Block B, Floor 4';
-    const mockPriority = 'High';
-    const mockTechName = 'Mike Ross';
-    const mockTechPhone = '+1 234 567 8900';
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // Theme background
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         title: const Text(
           'Ticket Details',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF005CAB), // Primary Blue
+        backgroundColor: const Color(0xFF005CAB),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 1. Ticket Status & Progress Timeline
-            _buildSectionTitle('Ticket Status'),
-            _buildStatusCard(ticket.status),
-            const SizedBox(height: 24),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('tickets')
+            .doc(ticketId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            // 2. Ticket Info
-            _buildSectionTitle('Ticket Info'),
-            _buildInfoCard(ticket, mockCategory, mockAddress, mockPriority),
-            const SizedBox(height: 24),
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Something went wrong:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
 
-            // 3. Technician Info (Show only if assigned or further)
-            if (ticket.status != TicketStatus.newTicket) ...[
-              _buildSectionTitle('Technician Info'),
-              _buildTechnicianCard(mockTechName, mockTechPhone),
-              const SizedBox(height: 24),
-            ],
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(child: Text('Ticket not found.'));
+          }
 
-            // 4. Updates / Activity Log
-            _buildSectionTitle('Activity Log'),
-            _buildActivityLogCard(ticket),
-            const SizedBox(height: 24),
+          final data = snapshot.data!.data() as Map<String, dynamic>;
 
-            // 5. Attachments
-            _buildSectionTitle('Attachments'),
-            _buildAttachmentsCard(),
-            const SizedBox(height: 32),
-          ],
-        ),
+          final title = (data['title'] ?? 'No Title').toString();
+          final description = (data['description'] ?? 'No description')
+              .toString();
+          final category = (data['category'] ?? 'Unknown').toString();
+          final address = (data['address'] ?? '-').toString();
+          final contactNumber = (data['contactNumber'] ?? '-').toString();
+          final customerName = (data['customerName'] ?? '-').toString();
+          final customerEmail = (data['customerEmail'] ?? '-').toString();
+          final status = (data['status'] ?? 'NEW').toString().toUpperCase();
+          final attachmentUrl = (data['attachmentUrl'] ?? '').toString();
+          final technicianId = data['technicianId'];
+          final createdAt = data['createdAt'] as Timestamp?;
+          final updatedAt = data['updatedAt'] as Timestamp?;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildSectionTitle('Ticket Status'),
+                _buildStatusCard(status),
+                const SizedBox(height: 24),
+
+                _buildSectionTitle('Ticket Info'),
+                _buildInfoCard(
+                  ticketId: ticketId,
+                  title: title,
+                  description: description,
+                  category: category,
+                  address: address,
+                  createdAt: createdAt,
+                ),
+                const SizedBox(height: 24),
+
+                if (technicianId != null) ...[
+                  _buildSectionTitle('Technician Info'),
+                  _buildTechnicianCard(technicianId.toString()),
+                  const SizedBox(height: 24),
+                ],
+
+                _buildSectionTitle('Customer Info'),
+                _buildCustomerCard(
+                  customerName: customerName,
+                  customerEmail: customerEmail,
+                  contactNumber: contactNumber,
+                ),
+                const SizedBox(height: 24),
+
+                _buildSectionTitle('Activity Log'),
+                _buildActivityLogCard(
+                  status: status,
+                  createdAt: createdAt,
+                  updatedAt: updatedAt,
+                  technicianId: technicianId?.toString(),
+                ),
+                const SizedBox(height: 24),
+
+                _buildSectionTitle('Attachments'),
+                _buildAttachmentsCard(attachmentUrl),
+                const SizedBox(height: 32),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -117,32 +147,9 @@ class TicketDetailsScreen extends StatelessWidget {
     );
   }
 
-  // --- 1. Status Card with Timeline ---
-  Widget _buildStatusCard(TicketStatus currentStatus) {
-    // Define the timeline steps
-    final steps = [
-      {'title': 'Assigned', 'status': TicketStatus.assigned},
-      {'title': 'In Progress', 'status': TicketStatus.inProgress},
-      {'title': 'Completed', 'status': TicketStatus.resolved},
-    ];
-
-    // Determine current step index based on status
-    int currentStepIndex = 0;
-    switch (currentStatus) {
-      case TicketStatus.newTicket:
-        currentStepIndex = 0;
-        break;
-      case TicketStatus.assigned:
-        currentStepIndex = 2;
-        break;
-      case TicketStatus.inProgress:
-        currentStepIndex = 3;
-        break;
-      case TicketStatus.resolved:
-      case TicketStatus.closed:
-        currentStepIndex = 4;
-        break;
-    }
+  Widget _buildStatusCard(String currentStatus) {
+    final steps = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
+    final currentIndex = steps.indexOf(currentStatus);
 
     return _buildCard(
       child: Column(
@@ -162,11 +169,10 @@ class TicketDetailsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          // Vertical Timeline
           ...List.generate(steps.length, (index) {
             final step = steps[index];
-            final isCompleted = index <= currentStepIndex;
-            final isCurrent = index == currentStepIndex;
+            final isCompleted = currentIndex >= index;
+            final isCurrent = currentIndex == index;
             final isLast = index == steps.length - 1;
 
             return Row(
@@ -212,7 +218,7 @@ class TicketDetailsScreen extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      step['title'] as String,
+                      _statusLabel(step),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: isCurrent
@@ -230,36 +236,35 @@ class TicketDetailsScreen extends StatelessWidget {
               ],
             );
           }),
+          if (currentStatus == 'CLOSED') ...[
+            const SizedBox(height: 12),
+            Text(
+              'This ticket has been closed.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  // --- 2. Ticket Info Card ---
-  Widget _buildInfoCard(
-    Ticket ticket,
-    String category,
-    String address,
-    String priority,
-  ) {
+  Widget _buildInfoCard({
+    required String ticketId,
+    required String title,
+    required String description,
+    required String category,
+    required String address,
+    required Timestamp? createdAt,
+  }) {
     return _buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow('Ticket ID', ticket.id),
+          _buildInfoRow('Ticket ID', ticketId),
           _buildDivider(),
           _buildInfoRow('Category', category),
           _buildDivider(),
-          _buildInfoRow(
-            'Priority',
-            priority,
-            valueColor: const Color(0xFFFF6600),
-          ),
-          _buildDivider(),
-          _buildInfoRow(
-            'Date Submitted',
-            '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
-          ),
+          _buildInfoRow('Date Submitted', _formatTimestamp(createdAt)),
           _buildDivider(),
           _buildInfoRow('Address', address),
           _buildDivider(),
@@ -273,7 +278,7 @@ class TicketDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            ticket.title,
+            title,
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -282,13 +287,31 @@ class TicketDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            ticket.description,
+            description,
             style: TextStyle(
               fontSize: 14,
               color: Colors.grey[800],
               height: 1.5,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerCard({
+    required String customerName,
+    required String customerEmail,
+    required String contactNumber,
+  }) {
+    return _buildCard(
+      child: Column(
+        children: [
+          _buildInfoRow('Customer Name', customerName),
+          _buildDivider(),
+          _buildInfoRow('Customer Email', customerEmail),
+          _buildDivider(),
+          _buildInfoRow('Contact Number', contactNumber),
         ],
       ),
     );
@@ -332,14 +355,13 @@ class TicketDetailsScreen extends StatelessWidget {
     return Divider(color: Colors.grey[200], height: 16);
   }
 
-  // --- 3. Technician Info Card ---
-  Widget _buildTechnicianCard(String name, String phone) {
+  Widget _buildTechnicianCard(String technicianId) {
     return _buildCard(
       child: Row(
         children: [
           const CircleAvatar(
             radius: 30,
-            backgroundColor: Color(0xFF005CAB), // Primary Blue
+            backgroundColor: Color(0xFF005CAB),
             child: Icon(Icons.person, color: Colors.white, size: 36),
           ),
           const SizedBox(width: 16),
@@ -348,30 +370,18 @@ class TicketDetailsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  name,
+                  technicianId,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF333333),
                   ),
                 ),
                 const Text(
-                  'Assigned Technician',
+                  'Assigned Technician ID',
                   style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               ],
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF6600).withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.phone, color: Color(0xFFFF6600)),
-              onPressed: () {
-                // Handle call
-              },
             ),
           ),
         ],
@@ -379,45 +389,62 @@ class TicketDetailsScreen extends StatelessWidget {
     );
   }
 
-  // --- 4. Activity Log Card ---
-  Widget _buildActivityLogCard(Ticket ticket) {
-    // Mock logs
-    final logs = [
+  Widget _buildActivityLogCard({
+    required String status,
+    required Timestamp? createdAt,
+    required Timestamp? updatedAt,
+    String? technicianId,
+  }) {
+    final List<Map<String, dynamic>> logs = [
       {
         'title': 'Ticket Submitted',
-        'date': ticket.createdAt,
+        'date': createdAt?.toDate(),
         'desc': 'Ticket was successfully created by customer.',
       },
-      if (ticket.status != TicketStatus.newTicket)
-        {
-          'title': 'Technician Assigned',
-          'date': ticket.updatedAt.subtract(const Duration(hours: 2)),
-          'desc': 'Mike Ross assigned to ticket.',
-        },
-      if (ticket.status == TicketStatus.inProgress ||
-          ticket.status == TicketStatus.resolved)
-        {
-          'title': 'In Progress',
-          'date': ticket.updatedAt.subtract(const Duration(minutes: 30)),
-          'desc': 'Technician is en route / working on the issue.',
-        },
-      if (ticket.status == TicketStatus.resolved ||
-          ticket.status == TicketStatus.closed)
-        {
-          'title': 'Resolved',
-          'date': ticket.updatedAt,
-          'desc': 'Issue resolved. Awaiting customer confirmation.',
-        },
-    ].reversed.toList(); // Latest first
+    ];
+
+    if (technicianId != null) {
+      logs.add({
+        'title': 'Technician Assigned',
+        'date': updatedAt?.toDate(),
+        'desc': 'A technician has been assigned to this ticket.',
+      });
+    }
+
+    if (status == 'IN_PROGRESS' || status == 'RESOLVED' || status == 'CLOSED') {
+      logs.add({
+        'title': 'In Progress',
+        'date': updatedAt?.toDate(),
+        'desc': 'Work on this issue is currently in progress.',
+      });
+    }
+
+    if (status == 'RESOLVED' || status == 'CLOSED') {
+      logs.add({
+        'title': 'Resolved',
+        'date': updatedAt?.toDate(),
+        'desc': 'Issue has been marked as resolved.',
+      });
+    }
+
+    if (status == 'CLOSED') {
+      logs.add({
+        'title': 'Closed',
+        'date': updatedAt?.toDate(),
+        'desc': 'Ticket has been closed.',
+      });
+    }
+
+    final displayLogs = logs.reversed.toList();
 
     return _buildCard(
       child: ListView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        itemCount: logs.length,
+        itemCount: displayLogs.length,
         itemBuilder: (context, index) {
-          final log = logs[index];
-          final date = log['date'] as DateTime;
+          final log = displayLogs[index];
+          final date = log['date'] as DateTime?;
           final isFirst = index == 0;
 
           return Padding(
@@ -444,18 +471,21 @@ class TicketDetailsScreen extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            log['title'] as String,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: isFirst
-                                  ? const Color(0xFF333333)
-                                  : Colors.grey[700],
+                          Expanded(
+                            child: Text(
+                              log['title'] as String,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: isFirst
+                                    ? const Color(0xFF333333)
+                                    : Colors.grey[700],
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
-                            '${date.day}/${date.month} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                            _formatShortDate(date),
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[500],
@@ -479,8 +509,22 @@ class TicketDetailsScreen extends StatelessWidget {
     );
   }
 
-  // --- 5. Attachments Card ---
-  Widget _buildAttachmentsCard() {
+  Widget _buildAttachmentsCard(String attachmentUrl) {
+    if (attachmentUrl.trim().isEmpty) {
+      return _buildCard(
+        child: Row(
+          children: [
+            Icon(Icons.attach_file, color: Colors.grey[500]),
+            const SizedBox(width: 8),
+            Text(
+              'No attachment uploaded',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
     return _buildCard(
       child: Row(
         children: [
@@ -493,61 +537,47 @@ class TicketDetailsScreen extends StatelessWidget {
               border: Border.all(color: Colors.grey[300]!),
             ),
             child: Icon(
-              Icons.image_outlined,
+              Icons.insert_drive_file_outlined,
               size: 32,
               color: Colors.grey[400],
             ),
           ),
           const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'router_error.jpg',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: Color(0xFF333333),
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  '1.2 MB',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-              ],
+          Expanded(
+            child: Text(
+              attachmentUrl,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Color(0xFF005CAB),
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.download_rounded, color: Color(0xFF005CAB)),
-            onPressed: () {
-              // Handle download
-            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatusBadge(TicketStatus status) {
+  Widget _buildStatusBadge(String status) {
     Color color;
     switch (status) {
-      case TicketStatus.newTicket:
+      case 'NEW':
         color = Colors.orange;
         break;
-      case TicketStatus.assigned:
+      case 'ASSIGNED':
         color = Colors.blue;
         break;
-      case TicketStatus.inProgress:
+      case 'IN_PROGRESS':
         color = Colors.purple;
         break;
-      case TicketStatus.resolved:
+      case 'RESOLVED':
         color = Colors.green;
         break;
-      case TicketStatus.closed:
+      case 'CLOSED':
         color = Colors.grey;
         break;
+      default:
+        color = Colors.black54;
     }
 
     return Container(
@@ -558,7 +588,7 @@ class TicketDetailsScreen extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.5)),
       ),
       child: Text(
-        status.displayName.toUpperCase(),
+        _statusLabel(status).toUpperCase(),
         style: TextStyle(
           color: color,
           fontSize: 12,
@@ -566,5 +596,46 @@ class TicketDetailsScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'NEW':
+        return 'New';
+      case 'ASSIGNED':
+        return 'Assigned';
+      case 'IN_PROGRESS':
+        return 'In Progress';
+      case 'RESOLVED':
+        return 'Resolved';
+      case 'CLOSED':
+        return 'Closed';
+      default:
+        return status;
+    }
+  }
+
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return '-';
+
+    final date = timestamp.toDate();
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/$year $hour:$minute';
+  }
+
+  String _formatShortDate(DateTime? date) {
+    if (date == null) return '-';
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+
+    return '$day/$month $hour:$minute';
   }
 }

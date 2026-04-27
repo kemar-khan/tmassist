@@ -7,8 +7,16 @@ import '../utils/enums.dart';
 class DummyData {
   static final List<AppUser> users = [
     const AppUser(id: 'u_admin_1', name: 'Admin Aisyah', role: UserRole.admin),
-    const AppUser(id: 'u_tech_1', name: 'Tech Danish', role: UserRole.technician),
-    const AppUser(id: 'u_tech_2', name: 'Tech Haziq', role: UserRole.technician),
+    const AppUser(
+      id: 'u_tech_1',
+      name: 'Tech Danish',
+      role: UserRole.technician,
+    ),
+    const AppUser(
+      id: 'u_tech_2',
+      name: 'Tech Haziq',
+      role: UserRole.technician,
+    ),
   ];
 
   static List<Ticket> initialTickets() {
@@ -27,7 +35,8 @@ class DummyData {
       Ticket(
         id: 't_1002',
         title: 'Slow Speed - Evening',
-        description: 'Customer reports speed drops at night. Need check signal level.',
+        description:
+            'Customer reports speed drops at night. Need check signal level.',
         status: TicketStatus.assigned,
         createdBy: 'u_admin_1',
         assignedTo: 'u_tech_1',

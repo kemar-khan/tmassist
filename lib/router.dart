@@ -4,12 +4,10 @@ import 'package:flutter/material.dart';
 
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_customer_screen.dart';
-import 'features/supervisor/supervisor_home_screen.dart';
 import 'features/supervisor/create_ticket_screen.dart';
 import 'features/supervisor/assign_ticket_screen.dart';
 import 'features/supervisor/ticket_detail_screen.dart';
 import 'features/supervisor/supervisor_main_screen.dart';
-import 'features/technician/tech_home_screen.dart';
 import 'features/technician/technician_main_screen.dart';
 import 'features/technician/ticket_detail_screen.dart';
 import 'features/technician/checklist_screen.dart';
@@ -28,14 +26,16 @@ class AppRouter {
       case '/login':
         return MaterialPageRoute(builder: (_) => const LoginScreen());
       case '/register':
-        return MaterialPageRoute(builder: (_) => const RegisterCustomerScreen());
+        return MaterialPageRoute(
+          builder: (_) => const RegisterCustomerScreen(),
+        );
 
-      // Admin
-      case '/admin':
+      // Supervisor
+      case '/supervisor':
         return MaterialPageRoute(builder: (_) => const SupervisorMainScreen());
-      case '/admin/create':
+      case '/supervisor/create':
         return MaterialPageRoute(builder: (_) => const CreateTicketScreen());
-      case '/admin/assign':
+      case '/supervisor/assign':
         final args = settings.arguments;
 
         if (args == null || args is! String) {

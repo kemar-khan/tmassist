@@ -16,7 +16,7 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
   int _selectedIndex = 0;
 
   final List<Widget> _screens = const [
-    AdminHomeScreen(), // Supervisor Home
+    SupervisorHomeScreen(), // Supervisor Home
     IncomingTicketsScreen(),
     SupervisorProfileScreen(),
   ];
@@ -30,10 +30,7 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         child: ClipRRect(

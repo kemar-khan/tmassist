@@ -2,7 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/auth_service.dart';
 import '../../data/in_memory_store.dart';
+import '../../models/user.dart';
+import '../../utils/enums.dart';
 
 class RegisterCustomerScreen extends StatefulWidget {
   const RegisterCustomerScreen({super.key});
@@ -13,11 +16,19 @@ class RegisterCustomerScreen extends StatefulWidget {
 
 class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  final AuthService _authService = AuthService();
+
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -25,37 +36,60 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  void _handleRegister() async {
+  Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final credential = await _authService.registerCustomer(
+        fullName: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        address: _addressController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    final store = context.read<InMemoryStore>();
-    store.registerCustomer(
-      name: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      phone: _phoneController.text.trim(),
-      address: _addressController.text.trim(),
-    );
+      // Update in-memory store so the app knows who is logged in
+      final store = context.read<InMemoryStore>();
+      store.loginAs(AppUser(
+        id: credential.user?.uid ?? 'unknown',
+        name: _nameController.text.trim(),
+        role: UserRole.customer,
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        address: _addressController.text.trim(),
+      ));
 
-    setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Registration successful! Welcome."),
+          backgroundColor: Colors.green,
+        ),
+      );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Registration Successful! You can now log in."),
-        backgroundColor: Colors.green,
-      ),
-    );
+      Navigator.pushNamedAndRemoveUntil(context, '/customer', (route) => false);
+    } catch (e) {
+      if (!mounted) return;
 
-    Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Registration failed: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -73,7 +107,6 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Header Section
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(bottom: 40, left: 32, right: 32),
@@ -102,8 +135,6 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
                 ],
               ),
             ),
-
-            // Form Section
             Padding(
               padding: const EdgeInsets.all(32.0),
               child: Form(
@@ -115,7 +146,7 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
                       label: "Full Name",
                       icon: Icons.person_outline,
                       validator: (val) =>
-                          val!.isEmpty ? "Enter your name" : null,
+                          val == null || val.isEmpty ? "Enter your name" : null,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -123,8 +154,15 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
                       label: "Email Address",
                       icon: Icons.email_outlined,
                       keyboardType: TextInputType.emailAddress,
-                      validator: (val) =>
-                          !val!.contains("@") ? "Enter a valid email" : null,
+                      validator: (val) {
+                        if (val == null || val.isEmpty) {
+                          return "Enter your email";
+                        }
+                        if (!val.contains("@")) {
+                          return "Enter a valid email";
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -132,8 +170,9 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
                       label: "Phone Number",
                       icon: Icons.phone_outlined,
                       keyboardType: TextInputType.phone,
-                      validator: (val) =>
-                          val!.isEmpty ? "Enter your phone number" : null,
+                      validator: (val) => val == null || val.isEmpty
+                          ? "Enter your phone number"
+                          : null,
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -141,13 +180,67 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
                       label: "Home Address",
                       icon: Icons.home_outlined,
                       maxLines: 3,
-                      validator: (val) =>
-                          val!.isEmpty ? "Enter your address" : null,
+                      validator: (val) => val == null || val.isEmpty
+                          ? "Enter your address"
+                          : null,
                     ),
-
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: _passwordController,
+                      label: "Password",
+                      icon: Icons.lock_outline,
+                      obscureText: _obscurePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                      validator: (val) {
+                        if (val == null || val.isEmpty) {
+                          return "Enter your password";
+                        }
+                        if (val.length < 6) {
+                          return "Password must be at least 6 characters";
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: _confirmPasswordController,
+                      label: "Confirm Password",
+                      icon: Icons.lock_outline,
+                      obscureText: _obscureConfirmPassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureConfirmPassword = !_obscureConfirmPassword;
+                          });
+                        },
+                      ),
+                      validator: (val) {
+                        if (val == null || val.isEmpty) {
+                          return "Confirm your password";
+                        }
+                        if (val != _passwordController.text) {
+                          return "Passwords do not match";
+                        }
+                        return null;
+                      },
+                    ),
                     const SizedBox(height: 32),
-
-                    // Register Button
                     SizedBox(
                       width: double.infinity,
                       height: 55,
@@ -189,16 +282,20 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool obscureText = false,
+    Widget? suffixIcon,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
-      maxLines: maxLines,
+      maxLines: obscureText ? 1 : maxLines,
+      obscureText: obscureText,
       validator: validator,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: Colors.orange),
+        suffixIcon: suffixIcon,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
