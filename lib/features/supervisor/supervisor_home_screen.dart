@@ -116,7 +116,7 @@ class SupervisorHomeScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                supervisorName,
+                                supervisorName + " | Supervisor",
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 24,
