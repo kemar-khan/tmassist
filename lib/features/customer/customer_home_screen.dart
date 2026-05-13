@@ -82,8 +82,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     t.status == TicketStatus.assigned,
               )
               .length;
-          final inProgressCount =
-              tickets.where((t) => t.status == TicketStatus.inProgress).length;
+          final inProgressCount = tickets
+              .where((t) => t.status == TicketStatus.inProgress)
+              .length;
           final resolvedCount = tickets
               .where(
                 (t) =>
@@ -220,7 +221,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildCounter("Pending", pendingCount, Colors.orange),
+                        _buildCounter("New", pendingCount, Colors.orange),
                         _buildCounter(
                           "In Progress",
                           inProgressCount,
@@ -506,4 +507,3 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 }
-

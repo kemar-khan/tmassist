@@ -170,7 +170,7 @@ class SupervisorHomeScreen extends StatelessWidget {
                                   "Total Tickets",
                                   totalTickets,
                                   Icons.confirmation_number_outlined,
-                                  Colors.blue,
+                                  Colors.grey,
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -191,10 +191,10 @@ class SupervisorHomeScreen extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _buildKPICard(
-                                  "Pending",
+                                  "Assigned",
                                   assignedTickets,
                                   Icons.pending_actions,
-                                  Colors.orange,
+                                  Colors.blue,
                                 ),
                               ),
                               const SizedBox(width: 12),
