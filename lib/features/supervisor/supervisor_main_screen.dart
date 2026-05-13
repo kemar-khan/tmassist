@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'supervisor_home_screen.dart';
 import 'incoming_tickets_screen.dart';
 import 'profile_screen.dart';
+import 'technician_performance_screen.dart';
 
 class SupervisorMainScreen extends StatefulWidget {
   const SupervisorMainScreen({super.key});
@@ -18,6 +19,7 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
   final List<Widget> _screens = const [
     SupervisorHomeScreen(), // Supervisor Home
     IncomingTicketsScreen(),
+    TechnicianPerformanceScreen(),
     SupervisorProfileScreen(),
   ];
 
@@ -52,6 +54,11 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
                 icon: Icon(Icons.confirmation_number_outlined, size: 20),
                 selectedIcon: Icon(Icons.confirmation_number_rounded, size: 22),
                 label: 'Tickets',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.analytics_outlined, size: 20),
+                selectedIcon: Icon(Icons.analytics_rounded, size: 22),
+                label: 'Analytics',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline, size: 20),
