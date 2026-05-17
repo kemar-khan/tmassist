@@ -16,6 +16,7 @@ import 'features/customer/my_tickets_screen.dart';
 import 'features/customer/submit_ticket_screen.dart';
 import 'features/customer/profile_screen.dart';
 import 'features/customer/ticket_details_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -28,6 +29,8 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => const RegisterCustomerScreen(),
         );
+      case '/forgot-password':
+        return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());
 
       // Supervisor
       case '/supervisor':
