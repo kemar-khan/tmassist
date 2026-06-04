@@ -760,78 +760,18 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   // --- 6. Attachments Card ---
   Widget _buildAttachmentsCard(String attachmentUrl) {
     if (attachmentUrl.trim().isEmpty) {
-      return _buildCard(
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.image_outlined, color: Colors.grey[400]),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'No attachment uploaded',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  Text('-', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.remove_red_eye_outlined,
-              color: Color(0xFF005CAB),
-              size: 20,
-            ),
-          ],
-        ),
-      );
+      return _buildCard(child: const Text('No attachment uploaded'));
     }
 
     return _buildCard(
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.image_outlined, color: Colors.grey[400]),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  attachmentUrl.split('/').last,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-                const Text(
-                  'Uploaded file',
-                  style: TextStyle(color: Colors.grey, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.remove_red_eye_outlined,
-            color: Color(0xFF005CAB),
-            size: 20,
-          ),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          attachmentUrl,
+          height: 250,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }

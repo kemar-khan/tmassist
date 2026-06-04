@@ -512,49 +512,18 @@ class TicketDetailsScreen extends StatelessWidget {
 
   Widget _buildAttachmentsCard(String attachmentUrl) {
     if (attachmentUrl.trim().isEmpty) {
-      return _buildCard(
-        child: Row(
-          children: [
-            Icon(Icons.attach_file, color: Colors.grey[500]),
-            const SizedBox(width: 8),
-            Text(
-              'No attachment uploaded',
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
-            ),
-          ],
-        ),
-      );
+      return _buildCard(child: const Text('No attachment uploaded'));
     }
 
     return _buildCard(
-      child: Row(
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Icon(
-              Icons.insert_drive_file_outlined,
-              size: 32,
-              color: Colors.grey[400],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              attachmentUrl,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: Color(0xFF005CAB),
-              ),
-            ),
-          ),
-        ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          attachmentUrl,
+          height: 250,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }

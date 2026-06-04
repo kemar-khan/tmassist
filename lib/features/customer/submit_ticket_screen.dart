@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/services/ticket_service.dart';
+import '../../core/services/cloudinary_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class SubmitTicketScreen extends StatefulWidget {
   const SubmitTicketScreen({super.key});
@@ -11,12 +14,17 @@ class SubmitTicketScreen extends StatefulWidget {
 class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   final _formKey = GlobalKey<FormState>();
   final TicketService _ticketService = TicketService();
+  final TextEditingController _addressController = TextEditingController();
 
   String? _category;
   String? _title;
   String? _description;
   String? _address;
   String? _contactNumber;
+  String? _attachmentUrl;
+  String? _attachmentFileName;
+  bool _isUploadingAttachment = false;
+  bool _isGettingLocation = false;
 
   bool _isSubmitting = false;
 
@@ -36,7 +44,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         description: _description!,
         address: _address!,
         contactNumber: _contactNumber!,
-        attachmentUrl: null, // add file upload later
+        attachmentUrl: _attachmentUrl, // add file upload later
       );
 
       if (!mounted) return;
@@ -65,6 +73,99 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         });
       }
     }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isGettingLocation = true);
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied');
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      Placemark place = placemarks[0];
+
+      final address = '${place.street}, ${place.locality}, ${place.country}';
+
+      setState(() {
+        _address = address;
+        _addressController.text = address;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location added successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to get location: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isGettingLocation = false);
+      }
+    }
+  }
+
+  Future<void> _uploadAttachment() async {
+    setState(() => _isUploadingAttachment = true);
+
+    try {
+      final url = await CloudinaryService().uploadFile();
+
+      setState(() {
+        _attachmentUrl = url;
+        _attachmentFileName = url.split('/').last;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Attachment uploaded successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingAttachment = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    super.dispose();
   }
 
   @override
@@ -148,6 +249,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                 child: Column(
                   children: [
                     TextFormField(
+                      controller: _addressController,
                       decoration: _inputDecoration(
                         'Service Address',
                         Icons.location_on_outlined,
@@ -162,16 +264,24 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
-                      onPressed: () {
-                        // add current location feature later
-                      },
-                      icon: const Icon(
-                        Icons.my_location,
-                        color: Color(0xFF005CAB),
-                      ),
-                      label: const Text(
-                        'Use Current Location',
-                        style: TextStyle(
+                      onPressed: _isGettingLocation
+                          ? null
+                          : _getCurrentLocation,
+                      icon: _isGettingLocation
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.my_location,
+                              color: Color(0xFF005CAB),
+                            ),
+                      label: Text(
+                        _isGettingLocation
+                            ? 'Getting Location...'
+                            : 'Use Current Location',
+                        style: const TextStyle(
                           color: Color(0xFF005CAB),
                           fontWeight: FontWeight.bold,
                         ),
@@ -221,38 +331,119 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                     ),
                     const SizedBox(height: 8),
                     InkWell(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Attachment upload not added yet'),
-                          ),
-                        );
-                      },
+                      onTap: _isUploadingAttachment ? null : _uploadAttachment,
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 20),
                         decoration: BoxDecoration(
                           color: Colors.grey[50],
-                          border: Border.all(color: Colors.grey[300]!),
+                          border: Border.all(
+                            color: _attachmentUrl == null
+                                ? Colors.grey[300]!
+                                : Colors.green,
+                          ),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Column(
                           children: [
                             Icon(
-                              Icons.cloud_upload_outlined,
+                              _isUploadingAttachment
+                                  ? Icons.hourglass_top_rounded
+                                  : _attachmentUrl == null
+                                  ? Icons.cloud_upload_outlined
+                                  : Icons.check_circle_outline,
                               size: 32,
-                              color: Colors.grey[400],
+                              color: _isUploadingAttachment
+                                  ? Colors.orange
+                                  : _attachmentUrl == null
+                                  ? Colors.grey[400]
+                                  : Colors.green,
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Tap to upload image or file',
-                              style: TextStyle(color: Colors.grey[500]),
+                              _isUploadingAttachment
+                                  ? 'Uploading attachment...'
+                                  : _attachmentFileName ??
+                                        'Tap to upload image or file',
+                              style: TextStyle(
+                                color: _attachmentUrl == null
+                                    ? Colors.grey[500]
+                                    : Colors.green,
+                                fontWeight: _attachmentUrl == null
+                                    ? FontWeight.normal
+                                    : FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
                       ),
                     ),
+
+                    if (_attachmentUrl != null) ...[
+                      const SizedBox(height: 12),
+
+                      (_attachmentFileName?.toLowerCase().endsWith('.pdf') ??
+                              false)
+                          ? Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: Colors.red.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.picture_as_pdf,
+                                    color: Colors.red,
+                                    size: 40,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _attachmentFileName ?? 'PDF File',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Container(
+                              width: double.infinity,
+                              height: 180,
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Image.network(
+                                _attachmentUrl!,
+                                fit: BoxFit.cover,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                      if (loadingProgress == null) {
+                                        return child;
+                                      }
+
+                                      return const Center(
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    },
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Center(
+                                    child: Icon(Icons.broken_image, size: 50),
+                                  );
+                                },
+                              ),
+                            ),
+                    ],
                   ],
                 ),
               ),
