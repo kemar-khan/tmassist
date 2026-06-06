@@ -76,11 +76,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
           // Calculate ticket counts
           final pendingCount = tickets
-              .where(
-                (t) =>
-                    t.status == TicketStatus.newTicket ||
-                    t.status == TicketStatus.assigned,
-              )
+              .where((t) => t.status == TicketStatus.newTicket)
               .length;
           final inProgressCount = tickets
               .where((t) => t.status == TicketStatus.inProgress)
