@@ -3,6 +3,7 @@ import '../../core/services/ticket_service.dart';
 import '../../core/services/cloudinary_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import '../../core/services/ai_extraction_service.dart';
 
 class SubmitTicketScreen extends StatefulWidget {
   const SubmitTicketScreen({super.key});
@@ -27,6 +28,16 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   bool _isGettingLocation = false;
 
   bool _isSubmitting = false;
+
+  // AI Mode variables
+  bool _isAiMode = false;
+  bool _isExtracting = false;
+  final TextEditingController _aiInputController = TextEditingController();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+
+  final AiExtractionService _aiExtractionService = AiExtractionService();
+  String? _selectedCategory;
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
@@ -162,9 +173,61 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     }
   }
 
+  Future<void> _extractDetails() async {
+    if (_aiInputController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please describe your issue first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isExtracting = true);
+
+    try {
+      final result = await _aiExtractionService.extractTicketDetails(
+        _aiInputController.text.trim(),
+      );
+
+      setState(() {
+        _selectedCategory = result['category'];
+        _titleController.text = result['title'] ?? '';
+        _descriptionController.text = result['description'] ?? '';
+
+        if (result['address'] != null && result['address']!.isNotEmpty) {
+          _addressController.text = result['address']!;
+          _address = result['address'];
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Details extracted! Please review and complete the form.',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Extraction failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isExtracting = false);
+    }
+  }
+
   @override
   void dispose() {
     _addressController.dispose();
+    _aiInputController.dispose();
+    _titleController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -188,6 +251,9 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _buildModeToggle(),
+              const SizedBox(height: 16),
+              if (_isAiMode) _buildAiInputSection(),
               _buildSectionTitle('Issue Details'),
               _buildCard(
                 child: Column(
@@ -197,6 +263,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                         'Issue Category',
                         Icons.category_outlined,
                       ),
+                      value: _selectedCategory,
                       items: ['Network', 'Hardware', 'Software', 'Other']
                           .map(
                             (e) => DropdownMenuItem<String>(
@@ -208,10 +275,13 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                       validator: (val) =>
                           val == null ? 'Please select a category' : null,
                       onSaved: (val) => _category = val,
-                      onChanged: (String? value) {},
+                      onChanged: (String? value) {
+                        setState(() => _selectedCategory = value);
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      controller: _titleController,
                       decoration: _inputDecoration(
                         'Ticket Title',
                         Icons.title_outlined,
@@ -226,6 +296,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      controller: _descriptionController,
                       decoration: _inputDecoration(
                         'Description',
                         Icons.description_outlined,
@@ -536,6 +607,169 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
       filled: true,
       fillColor: Colors.grey[50],
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
+  Widget _buildModeToggle() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _isAiMode = false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: !_isAiMode
+                      ? const Color(0xFF005CAB)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.edit_note_rounded,
+                      color: !_isAiMode ? Colors.white : Colors.grey,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Fill Form',
+                      style: TextStyle(
+                        color: !_isAiMode ? Colors.white : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _isAiMode = true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _isAiMode
+                      ? const Color(0xFF005CAB)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.auto_awesome,
+                      color: _isAiMode ? Colors.white : Colors.grey,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'AI Mode',
+                      style: TextStyle(
+                        color: _isAiMode ? Colors.white : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAiInputSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.auto_awesome,
+                    color: Color(0xFF005CAB),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Describe Your Issue',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF333333),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Tell us what happened in your own words. AI will extract the details for you.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _aiInputController,
+                maxLines: 5,
+                decoration: _inputDecoration(
+                  'e.g. My internet has been down since morning, I\'m at Puchong...',
+                  Icons.chat_bubble_outline,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isExtracting ? null : _extractDetails,
+                  icon: _isExtracting
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.auto_awesome, color: Colors.white),
+                  label: Text(
+                    _isExtracting ? 'Extracting...' : 'Extract Details',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF005CAB),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 }

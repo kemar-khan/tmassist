@@ -84,7 +84,7 @@ class TicketDetailsScreen extends StatelessWidget {
 
                 if (technicianId != null) ...[
                   _buildSectionTitle('Technician Info'),
-                  _buildTechnicianCard(technicianName.toString()),
+                  TechnicianInfoCard(technicianId: technicianId.toString()),
                   const SizedBox(height: 24),
                 ],
 
@@ -607,5 +607,106 @@ class TicketDetailsScreen extends StatelessWidget {
     final minute = date.minute.toString().padLeft(2, '0');
 
     return '$day/$month $hour:$minute';
+  }
+}
+
+class TechnicianInfoCard extends StatelessWidget {
+  final String technicianId;
+
+  const TechnicianInfoCard({super.key, required this.technicianId});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(technicianId)
+          .get(),
+      builder: (context, snapshot) {
+        String name = 'Loading...';
+        String specialization = '';
+
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasData && snapshot.data!.exists) {
+            final data = snapshot.data!.data() as Map<String, dynamic>;
+            name = data['fullName']?.toString() ?? 'Unknown Technician';
+            specialization = data['specialization']?.toString() ?? '';
+          } else {
+            name = 'Unknown Technician';
+          }
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const CircleAvatar(
+                radius: 30,
+                backgroundColor: Color(0xFF005CAB),
+                child: Icon(Icons.person, color: Colors.white, size: 36),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF333333),
+                      ),
+                    ),
+                    if (specialization.isNotEmpty)
+                      Text(
+                        specialization,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF005CAB),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    const Text(
+                      'Assigned Technician',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF005CAB).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'AUTO ASSIGNED',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF005CAB),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

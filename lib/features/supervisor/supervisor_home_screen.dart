@@ -591,6 +591,7 @@ class SupervisorHomeScreen extends StatelessWidget {
     Map<String, dynamic> ticket,
   ) {
     final assignedName = (ticket['technicianName'] ?? '').toString();
+    final technicianId = ticket['technicianId'];
     final status = (ticket['status'] ?? 'NEW').toString().toUpperCase();
 
     return Container(
@@ -653,6 +654,8 @@ class SupervisorHomeScreen extends StatelessWidget {
                       child: Text(
                         assignedName.isNotEmpty
                             ? "Assigned: $assignedName"
+                            : technicianId != null
+                            ? "Assigned (ID: ${technicianId.toString().substring(0, 8)}...)"
                             : "Unassigned",
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
                       ),

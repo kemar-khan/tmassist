@@ -155,6 +155,39 @@ class _SupervisorTicketDetailScreenState
                   _buildTechnicianCard(
                     technicianName.isNotEmpty ? technicianName : technicianId,
                   ),
+                  if (status == 'ASSIGNED') ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(
+                            context,
+                            '/supervisor/assign',
+                            arguments: widget.ticketId,
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.swap_horiz_rounded,
+                          color: Color(0xFF005CAB),
+                        ),
+                        label: const Text(
+                          'Reassign Technician',
+                          style: TextStyle(
+                            color: Color(0xFF005CAB),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: Color(0xFF005CAB)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                 ],
 
@@ -415,9 +448,44 @@ class _SupervisorTicketDetailScreenState
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.phone_outlined, color: Color(0xFFFF6600)),
-            onPressed: () {},
+          // Show AUTO ASSIGNED badge
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('tickets')
+                .doc(widget.ticketId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox();
+              final data = snapshot.data!.data() as Map<String, dynamic>?;
+              final assignmentType = data?['assignmentType']?.toString() ?? '';
+              if (assignmentType == 'AUTO') {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF005CAB).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'AUTO',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF005CAB),
+                    ),
+                  ),
+                );
+              }
+              return IconButton(
+                icon: const Icon(
+                  Icons.phone_outlined,
+                  color: Color(0xFFFF6600),
+                ),
+                onPressed: () {},
+              );
+            },
           ),
         ],
       ),

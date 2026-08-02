@@ -213,14 +213,57 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
                           const SizedBox(height: 32),
 
                           // Technician Selection
+                          // Show current auto assignment if exists
+                          if (ticketData['assignmentType'] == 'AUTO' &&
+                              ticketData['technicianId'] != null) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF005CAB,
+                                ).withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(15),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF005CAB,
+                                  ).withOpacity(0.2),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.auto_awesome,
+                                    color: Color(0xFF005CAB),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'This ticket was auto-assigned by AI. You can override it below.',
+                                      style: TextStyle(
+                                        color: Color(0xFF005CAB),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Technician Selection
                           const Text(
-                            "Select Technician",
+                            "Override Assignment",
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF005CAB),
                             ),
                           ),
+                          const SizedBox(height: 16),
                           const SizedBox(height: 16),
 
                           if (technicians.isEmpty)
@@ -252,9 +295,46 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
                                     (data['fullName'] ?? 'Unnamed Technician')
                                         .toString();
 
+                                final specialization =
+                                    (data['specialization'] ?? '').toString();
                                 return DropdownMenuItem<String>(
                                   value: techDoc.id,
-                                  child: Text(techName),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          techName,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (specialization.isNotEmpty) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFF005CAB,
+                                            ).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            specialization,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFF005CAB),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 );
                               }).toList(),
                               onChanged: (val) {
