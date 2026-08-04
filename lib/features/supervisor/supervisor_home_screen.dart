@@ -75,10 +75,12 @@ class SupervisorHomeScreen extends StatelessWidget {
                 .where((t) => t['status'] == 'IN_PROGRESS')
                 .length;
             final resolvedTickets = tickets
-                .where(
-                  (t) => t['status'] == 'RESOLVED' || t['status'] == 'CLOSED',
-                )
+                .where((t) => t['status'] == 'RESOLVED')
                 .length;
+            final closedTickets = tickets
+                .where((t) => t['status'] == 'CLOSED')
+                .length;
+            ;
             final weeklyCounts = _getWeeklyTicketCounts(tickets);
             final maxWeeklyCount = weeklyCounts.values.isEmpty
                 ? 0
@@ -187,6 +189,7 @@ class SupervisorHomeScreen extends StatelessWidget {
                           const SizedBox(height: 16),
 
                           // Bottom row of KPIs
+                          // Bottom row of KPIs
                           Row(
                             children: [
                               Expanded(
@@ -206,13 +209,26 @@ class SupervisorHomeScreen extends StatelessWidget {
                                   Colors.purple,
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
                               Expanded(
                                 child: _buildKPICard(
                                   "Resolved",
                                   resolvedTickets,
                                   Icons.check_circle_outline,
                                   Colors.green,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildKPICard(
+                                  "Closed",
+                                  closedTickets,
+                                  Icons.lock_outline,
+                                  Colors.grey,
                                 ),
                               ),
                             ],
@@ -302,6 +318,14 @@ class SupervisorHomeScreen extends StatelessWidget {
                                               color: Colors.green,
                                             ),
                                           ),
+                                        if (closedTickets > 0)
+                                          Expanded(
+                                            flex: closedTickets,
+                                            child: Container(
+                                              height: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   )
@@ -326,6 +350,7 @@ class SupervisorHomeScreen extends StatelessWidget {
                                       Colors.purple,
                                     ),
                                     _buildLegendItem("Resolved", Colors.green),
+                                    _buildLegendItem("Closed", Colors.grey),
                                   ],
                                 ),
                               ],

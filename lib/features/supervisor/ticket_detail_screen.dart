@@ -1,5 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import '../../core/services/report_service.dart';
 
 class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -14,6 +18,15 @@ class SupervisorTicketDetailScreen extends StatefulWidget {
 class _SupervisorTicketDetailScreenState
     extends State<SupervisorTicketDetailScreen> {
   bool _isUpdating = false;
+  final ReportService _reportService = ReportService();
+  final TextEditingController _commentController = TextEditingController();
+  bool _isSavingComment = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleCloseTicket() async {
     setState(() => _isUpdating = true);
@@ -47,6 +60,180 @@ class _SupervisorTicketDetailScreenState
         ),
       );
     }
+  }
+
+  Future<void> _handleSaveComment() async {
+    if (_commentController.text.trim().isEmpty) return;
+
+    setState(() => _isSavingComment = true);
+
+    try {
+      await _reportService.addSupervisorComment(
+        ticketId: widget.ticketId,
+        comment: _commentController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Comment saved successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save comment: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingComment = false);
+    }
+  }
+
+  Future<void> _exportReportPdf(Map<String, dynamic> report) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (context) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.all(20),
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromHex('005CAB'),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'TM ASSIST',
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 24,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Text(
+                  'Service Report',
+                  style: const pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 24),
+          _pdfSectionTitle('TICKET INFORMATION'),
+          pw.SizedBox(height: 8),
+          _pdfInfoRow('Ticket ID', widget.ticketId),
+          _pdfInfoRow('Category', report['category'] ?? '-'),
+          _pdfInfoRow('Customer Name', report['customerName'] ?? '-'),
+          _pdfInfoRow('Technician', report['technicianName'] ?? '-'),
+          _pdfInfoRow('Address', report['address'] ?? '-'),
+          pw.SizedBox(height: 20),
+          _pdfSectionTitle('ISSUE SUMMARY'),
+          pw.SizedBox(height: 8),
+          _pdfBodyText(report['issueSummary'] ?? '-'),
+          pw.SizedBox(height: 20),
+          _pdfSectionTitle('ROOT CAUSE ANALYSIS'),
+          pw.SizedBox(height: 8),
+          _pdfBodyText(report['rootCause'] ?? '-'),
+          pw.SizedBox(height: 20),
+          _pdfSectionTitle('STEPS TAKEN'),
+          pw.SizedBox(height: 8),
+          _pdfBodyText(report['stepsTaken'] ?? '-'),
+          pw.SizedBox(height: 20),
+          _pdfSectionTitle('RESOLUTION SUMMARY'),
+          pw.SizedBox(height: 8),
+          _pdfBodyText(report['resolutionSummary'] ?? '-'),
+          pw.SizedBox(height: 20),
+          _pdfSectionTitle('RECOMMENDATIONS'),
+          pw.SizedBox(height: 8),
+          _pdfBodyText(report['recommendations'] ?? '-'),
+          pw.SizedBox(height: 20),
+          _pdfSectionTitle('TECHNICIAN NOTES'),
+          pw.SizedBox(height: 8),
+          _pdfBodyText(
+            (report['technicianNotes'] ?? '').toString().isEmpty
+                ? 'No additional notes.'
+                : report['technicianNotes'],
+          ),
+          pw.SizedBox(height: 20),
+          if ((report['supervisorComments'] ?? '').toString().isNotEmpty) ...[
+            _pdfSectionTitle('SUPERVISOR COMMENTS'),
+            pw.SizedBox(height: 8),
+            _pdfBodyText(report['supervisorComments']),
+            pw.SizedBox(height: 20),
+          ],
+          pw.Divider(),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            'Generated by TM Assist — ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+            style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+  }
+
+  pw.Widget _pdfSectionTitle(String title) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('005CAB'),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Text(
+        title,
+        style: pw.TextStyle(
+          color: PdfColors.white,
+          fontSize: 12,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _pdfInfoRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey700,
+              ),
+            ),
+          ),
+          pw.Text(': ', style: const pw.TextStyle(fontSize: 11)),
+          pw.Expanded(
+            child: pw.Text(value, style: const pw.TextStyle(fontSize: 11)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfBodyText(String text) {
+    return pw.Text(
+      text,
+      style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey800),
+    );
   }
 
   @override
@@ -212,6 +399,53 @@ class _SupervisorTicketDetailScreenState
                   hasTechnician: hasTechnician,
                 ),
                 const SizedBox(height: 24),
+
+                // Report section
+                FutureBuilder<Map<String, dynamic>?>(
+                  future: _reportService.getReport(widget.ticketId),
+                  builder: (context, reportSnapshot) {
+                    if (reportSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final report = reportSnapshot.data;
+                    if (report == null) return const SizedBox();
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildSectionTitle('Service Report'),
+                        _buildReportViewCard(report),
+                        const SizedBox(height: 12),
+                        _buildSupervisorCommentCard(report),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _exportReportPdf(report),
+                          icon: const Icon(
+                            Icons.picture_as_pdf_rounded,
+                            color: Color(0xFF005CAB),
+                          ),
+                          label: const Text(
+                            'Export Report as PDF',
+                            style: TextStyle(
+                              color: Color(0xFF005CAB),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: const BorderSide(color: Color(0xFF005CAB)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -687,6 +921,194 @@ class _SupervisorTicketDetailScreenState
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildReportViewCard(Map<String, dynamic> report) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildReportRow(
+            'Issue Summary',
+            report['issueSummary'] ?? '-',
+            isAi: false,
+          ),
+          _buildDivider(),
+          _buildReportRow(
+            'Root Cause Analysis',
+            report['rootCause'] ?? '-',
+            isAi: true,
+          ),
+          _buildDivider(),
+          _buildReportRow(
+            'Steps Taken',
+            report['stepsTaken'] ?? '-',
+            isAi: false,
+          ),
+          _buildDivider(),
+          _buildReportRow(
+            'Resolution Summary',
+            report['resolutionSummary'] ?? '-',
+            isAi: false,
+          ),
+          _buildDivider(),
+          _buildReportRow(
+            'Recommendations',
+            report['recommendations'] ?? '-',
+            isAi: true,
+          ),
+          _buildDivider(),
+          _buildReportRow(
+            'Technician Notes',
+            (report['technicianNotes'] ?? '').toString().isEmpty
+                ? 'No additional notes.'
+                : report['technicianNotes'],
+            isAi: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportRow(String label, String value, {required bool isAi}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (isAi) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF005CAB).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'AI',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF005CAB),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey[800],
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupervisorCommentCard(Map<String, dynamic> report) {
+    final existingComment = (report['supervisorComments'] ?? '').toString();
+
+    if (existingComment.isNotEmpty) {
+      _commentController.text = existingComment;
+    }
+
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.supervisor_account_outlined,
+                color: Color(0xFF005CAB),
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Supervisor Comments',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF333333),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _commentController,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Add your comments or feedback on this report...',
+              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: Color(0xFF005CAB),
+                  width: 2,
+                ),
+              ),
+              contentPadding: const EdgeInsets.all(12),
+            ),
+            style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isSavingComment ? null : _handleSaveComment,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF005CAB),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: _isSavingComment
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'Save Comment',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -82,11 +82,10 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               .where((t) => t.status == TicketStatus.inProgress)
               .length;
           final resolvedCount = tickets
-              .where(
-                (t) =>
-                    t.status == TicketStatus.resolved ||
-                    t.status == TicketStatus.closed,
-              )
+              .where((t) => t.status == TicketStatus.resolved)
+              .length;
+          final closedCount = tickets
+              .where((t) => t.status == TicketStatus.closed)
               .length;
 
           // Get recent tickets (last 3)
@@ -224,6 +223,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                           Colors.blue,
                         ),
                         _buildCounter("Resolved", resolvedCount, Colors.green),
+                        _buildCounter("Closed", closedCount, Colors.grey),
                       ],
                     ),
                   ],

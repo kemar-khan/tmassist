@@ -97,6 +97,9 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
             final resolvedCount = allAssignedTickets
                 .where((t) => t['status'] == 'RESOLVED')
                 .length;
+            final closedCount = allAssignedTickets
+                .where((t) => t['status'] == 'CLOSED')
+                .length;
 
             return Scaffold(
               backgroundColor: const Color(0xFFF5F5F5),
@@ -234,6 +237,7 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
                               resolvedCount,
                               Colors.green,
                             ),
+                            _buildCounter("Closed", closedCount, Colors.grey),
                           ],
                         ),
                       ],
@@ -251,6 +255,7 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
                           _buildFilterChip("Assigned", 'ASSIGNED'),
                           _buildFilterChip("In Progress", 'IN_PROGRESS'),
                           _buildFilterChip("Resolved", 'RESOLVED'),
+                          _buildFilterChip("Closed", 'CLOSED'),
                         ],
                       ),
                     ),
