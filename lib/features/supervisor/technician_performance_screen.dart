@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:fl_chart/fl_chart.dart';
 
 class TechnicianPerformanceScreen extends StatefulWidget {
   const TechnicianPerformanceScreen({super.key});
@@ -103,157 +104,224 @@ class _TechnicianPerformanceScreenState
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final techDocs = userSnapshot.data!.docs;
-              final ticketDocs = ticketSnapshot.data?.docs ?? [];
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('reports')
+                    .snapshots(),
+                builder: (context, reportSnapshot) {
+                  if (reportSnapshot.connectionState ==
+                      ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-              final startOfWeek = _startOfWeek(DateTime.now());
-              Map<String, int> weeklyActivity = {};
-              List<Map<String, dynamic>> technicians = [];
+                  final reportDocs = reportSnapshot.data?.docs ?? [];
+                  final submittedTicketIds = reportDocs
+                      .map((doc) => doc.id)
+                      .toSet();
 
-              for (var tech in techDocs) {
-                final data = tech.data() as Map<String, dynamic>;
-                final techId = tech.id;
-                final name = data['fullName'] ?? "Technician";
-                final specialization = data['specialization'] ?? "Generalist";
+                  final techDocs = userSnapshot.data!.docs;
+                  final ticketDocs = ticketSnapshot.data?.docs ?? [];
 
-                int assigned = 0;
-                int inProgress = 0;
-                int resolved = 0;
-                int total = 0;
+                  final startOfWeek = _startOfWeek(DateTime.now());
+                  Map<String, int> weeklyActivity = {};
+                  List<Map<String, dynamic>> technicians = [];
 
-                for (var ticket in ticketDocs) {
-                  final t = ticket.data() as Map<String, dynamic>;
+                  for (var tech in techDocs) {
+                    final data = tech.data() as Map<String, dynamic>;
+                    final techId = tech.id;
+                    final name = data['fullName'] ?? "Technician";
+                    final specialization =
+                        data['specialization'] ?? "Generalist";
 
-                  if (t['technicianId'] == techId) {
-                    total++;
-                    final status = (t['status'] ?? '').toString().toUpperCase();
+                    int assigned = 0;
+                    int inProgress = 0;
+                    int resolved = 0;
+                    int closed = 0;
+                    int total = 0;
+                    int totalReportsSubmitted = 0;
+                    int totalResolvableTickets = 0;
+                    double totalResolutionHours = 0;
+                    int resolutionCount = 0;
 
-                    if (status == 'ASSIGNED') assigned++;
-                    if (status == 'IN_PROGRESS') inProgress++;
-                    if (status == 'RESOLVED' || status == 'CLOSED') resolved++;
+                    for (var ticket in ticketDocs) {
+                      final t = ticket.data() as Map<String, dynamic>;
 
-                    final updatedAt = t['updatedAt'];
-                    if (updatedAt is Timestamp) {
-                      final date = updatedAt.toDate();
-                      if (date.isAfter(startOfWeek)) {
-                        weeklyActivity[techId] =
-                            (weeklyActivity[techId] ?? 0) + 1;
+                      if (t['technicianId'] == techId) {
+                        total++;
+                        final status = (t['status'] ?? '')
+                            .toString()
+                            .toUpperCase();
+
+                        if (status == 'ASSIGNED') assigned++;
+                        if (status == 'IN_PROGRESS') inProgress++;
+                        if (status == 'RESOLVED') resolved++;
+                        if (status == 'CLOSED') closed++;
+
+                        // Calculate resolution time
+                        if (status == 'RESOLVED' || status == 'CLOSED') {
+                          final createdAt = t['createdAt'];
+                          final updatedAt = t['updatedAt'];
+
+                          if (createdAt is Timestamp &&
+                              updatedAt is Timestamp) {
+                            final created = createdAt.toDate();
+                            final updated = updatedAt.toDate();
+                            final diff = updated.difference(created).inMinutes;
+                            if (diff > 0) {
+                              totalResolutionHours += diff / 60;
+                              resolutionCount++;
+                            }
+                          }
+
+                          // Check report submission
+                          totalResolvableTickets++;
+                          if (submittedTicketIds.contains(ticket.id)) {
+                            totalReportsSubmitted++;
+                          }
+                        }
+
+                        final updatedAt = t['updatedAt'];
+                        if (updatedAt is Timestamp) {
+                          final date = updatedAt.toDate();
+                          if (date.isAfter(startOfWeek)) {
+                            weeklyActivity[techId] =
+                                (weeklyActivity[techId] ?? 0) + 1;
+                          }
+                        }
                       }
                     }
+
+                    final completionRate = total > 0
+                        ? (resolved + closed) / total * 100
+                        : 0.0;
+
+                    final avgResolutionHours = resolutionCount > 0
+                        ? totalResolutionHours / resolutionCount
+                        : 0.0;
+
+                    technicians.add({
+                      'id': techId,
+                      'name': name,
+                      'specialization': specialization,
+                      'assigned': assigned,
+                      'inProgress': inProgress,
+                      'resolved': resolved,
+                      'closed': closed,
+                      'total': total,
+                      'completionRate': completionRate,
+                      'avgResolutionHours': avgResolutionHours,
+                      'reportsSubmitted': totalReportsSubmitted,
+                      'resolvableTickets': totalResolvableTickets,
+                    });
                   }
-                }
 
-                final completionRate = total > 0
-                    ? (resolved / total * 100)
-                    : 0.0;
+                  // Sort by completion rate descending
+                  technicians.sort(
+                    (a, b) =>
+                        b['completionRate'].compareTo(a['completionRate']),
+                  );
 
-                technicians.add({
-                  'id': techId,
-                  'name': name,
-                  'specialization': specialization,
-                  'assigned': assigned,
-                  'inProgress': inProgress,
-                  'resolved': resolved,
-                  'total': total,
-                  'completionRate': completionRate,
-                });
-              }
+                  String? mostActiveId;
+                  int maxActivity = 0;
 
-              // Sort by completion rate descending
-              technicians.sort(
-                (a, b) => b['completionRate'].compareTo(a['completionRate']),
-              );
+                  weeklyActivity.forEach((key, value) {
+                    if (value > maxActivity) {
+                      maxActivity = value;
+                      mostActiveId = key;
+                    }
+                  });
 
-              String? mostActiveId;
-              int maxActivity = 0;
+                  final mostActiveTech = mostActiveId != null
+                      ? technicians.firstWhere(
+                          (t) => t['id'] == mostActiveId,
+                          orElse: () => <String, dynamic>{},
+                        )
+                      : <String, dynamic>{};
 
-              weeklyActivity.forEach((key, value) {
-                if (value > maxActivity) {
-                  maxActivity = value;
-                  mostActiveId = key;
-                }
-              });
+                  final filtered = technicians.where((t) {
+                    final name = t['name'].toString().toLowerCase();
+                    return name.contains(_searchQuery.toLowerCase());
+                  }).toList();
 
-              final mostActiveTech = mostActiveId != null
-                  ? technicians.firstWhere(
-                      (t) => t['id'] == mostActiveId,
-                      orElse: () => <String, dynamic>{},
-                    )
-                  : <String, dynamic>{};
+                  return Column(
+                    children: [
+                      // Dashboard Stats Header
+                      _buildKpiHeader(technicians, weeklyActivity),
 
-              final filtered = technicians.where((t) {
-                final name = t['name'].toString().toLowerCase();
-                return name.contains(_searchQuery.toLowerCase());
-              }).toList();
-
-              return Column(
-                children: [
-                  // 🔵 Dashboard Stats Header
-                  _buildKpiHeader(technicians, weeklyActivity),
-
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      children: [
-                        // 🏆 Top Performer Highlight
-                        if (mostActiveTech.isNotEmpty)
-                          _buildTopPerformerCard(mostActiveTech, maxActivity)
-                        else
-                          _buildEmptyActivityCard(),
-
-                        const SizedBox(height: 20),
-
-                        // 🔍 Search Bar
-                        _buildSearchBar(),
-
-                        const SizedBox(height: 24),
-
-                        // 📊 Rankings Title
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, bottom: 16),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 4,
-                                height: 20,
-                                decoration: BoxDecoration(
-                                  color: _accentOrange,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              const Text(
-                                "Technician Rankings",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1A1A1A),
-                                ),
-                              ),
-                            ],
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
                           ),
+                          children: [
+                            // Top Performer Highlight
+                            if (mostActiveTech.isNotEmpty)
+                              _buildTopPerformerCard(
+                                mostActiveTech,
+                                maxActivity,
+                              )
+                            else
+                              _buildEmptyActivityCard(),
+
+                            const SizedBox(height: 20),
+
+                            // Bar Chart
+                            _buildBarChart(technicians),
+
+                            // Search Bar
+                            _buildSearchBar(),
+
+                            const SizedBox(height: 24),
+
+                            // Rankings Title
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                left: 4,
+                                bottom: 16,
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 4,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      color: _accentOrange,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Text(
+                                    "Technician Rankings",
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF1A1A1A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            if (filtered.isEmpty)
+                              _buildEmptyState(
+                                "No technicians matching your search",
+                                Icons.search_off_rounded,
+                              )
+                            else
+                              ...filtered.asMap().entries.map((entry) {
+                                int index = entry.key;
+                                var tech = entry.value;
+                                return _buildTechnicianCard(tech, index);
+                              }),
+
+                            const SizedBox(height: 40),
+                          ],
                         ),
-
-                        if (filtered.isEmpty)
-                          _buildEmptyState(
-                            "No technicians matching your search",
-                            Icons.search_off_rounded,
-                          )
-                        else
-                          ...filtered.asMap().entries.map((entry) {
-                            int index = entry.key;
-                            var tech = entry.value;
-                            return _buildTechnicianCard(tech, index);
-                          }).toList(),
-
-                        const SizedBox(height: 40),
-                      ],
-                    ),
-                  ),
-                ],
+                      ),
+                    ],
+                  );
+                },
               );
             },
           );
@@ -469,6 +537,154 @@ class _TechnicianPerformanceScreenState
     );
   }
 
+  Widget _buildBarChart(List<Map<String, dynamic>> technicians) {
+    if (technicians.isEmpty) return const SizedBox.shrink();
+
+    final maxTotal = technicians
+        .map((t) => (t['total'] as int))
+        .fold(0, (a, b) => a > b ? a : b)
+        .toDouble();
+
+    final bars = technicians.asMap().entries.map((entry) {
+      final tech = entry.value;
+      final total = (tech['total'] as int).toDouble();
+      return BarChartGroupData(
+        x: entry.key,
+        barRods: [
+          BarChartRodData(
+            toY: total,
+            color: _primaryBlue,
+            width: 18,
+            borderRadius: BorderRadius.circular(6),
+            backDrawRodData: BackgroundBarChartRodData(
+              show: true,
+              toY: maxTotal == 0 ? 1 : maxTotal,
+              color: Colors.grey[100],
+            ),
+          ),
+        ],
+      );
+    }).toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: _primaryBlue,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                "Ticket Volume by Technician",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A1A1A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 180,
+            child: BarChart(
+              BarChartData(
+                maxY: maxTotal == 0 ? 1 : maxTotal * 1.2,
+                barGroups: bars,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: maxTotal == 0
+                      ? 1
+                      : (maxTotal / 4).ceilToDouble(),
+                  getDrawingHorizontalLine: (value) =>
+                      FlLine(color: Colors.grey[200]!, strokeWidth: 1),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 28,
+                      interval: maxTotal == 0
+                          ? 1
+                          : (maxTotal / 4).ceilToDouble(),
+                      getTitlesWidget: (value, meta) => Text(
+                        value.toInt().toString(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 32,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index < 0 || index >= technicians.length) {
+                          return const SizedBox.shrink();
+                        }
+                        final name = technicians[index]['name'] as String;
+                        final short = name.split(' ').first;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            short,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final name = technicians[group.x]['name'] as String;
+                      return BarTooltipItem(
+                        '$name\n${rod.toY.toInt()} tickets',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
@@ -529,6 +745,20 @@ class _TechnicianPerformanceScreenState
     Color progressColor = completion > 80
         ? Colors.green
         : (completion > 50 ? _accentOrange : Colors.redAccent);
+
+    final avgHours = (tech['avgResolutionHours'] as double?) ?? 0.0;
+    final reportsSubmitted = (tech['reportsSubmitted'] as int?) ?? 0;
+    final resolvableTickets = (tech['resolvableTickets'] as int?) ?? 0;
+    final closed = (tech['closed'] as int?) ?? 0;
+
+    String avgTimeLabel;
+    if (avgHours == 0) {
+      avgTimeLabel = 'N/A';
+    } else if (avgHours < 1) {
+      avgTimeLabel = '${(avgHours * 60).toStringAsFixed(0)} mins';
+    } else {
+      avgTimeLabel = '${avgHours.toStringAsFixed(1)} hrs';
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 18),
@@ -628,23 +858,21 @@ class _TechnicianPerformanceScreenState
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          // Progress Bar with spacing
-          Column(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: completion / 100,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[100],
-                  valueColor: AlwaysStoppedAnimation<Color>(progressColor),
-                ),
-              ),
-            ],
+          const SizedBox(height: 16),
+
+          // Progress Bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: completion / 100,
+              minHeight: 10,
+              backgroundColor: Colors.grey[100],
+              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+            ),
           ),
-          const SizedBox(height: 20),
-          // Counts - Responsive Wrap
+          const SizedBox(height: 16),
+
+          // Status chips
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -666,6 +894,111 @@ class _TechnicianPerformanceScreenState
                 tech['resolved'],
                 Colors.green[50]!,
                 Colors.green[700]!,
+              ),
+              _statusChip(
+                "Closed",
+                closed,
+                Colors.grey[100]!,
+                Colors.grey[700]!,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Divider
+          Divider(color: Colors.grey[100], height: 1),
+          const SizedBox(height: 16),
+
+          // New metrics row
+          Row(
+            children: [
+              // Avg Resolution Time
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Avg Resolution',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      avgTimeLabel,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: avgHours == 0
+                            ? Colors.grey
+                            : avgHours <= 4
+                            ? Colors.green
+                            : avgHours <= 8
+                            ? _accentOrange
+                            : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Vertical divider
+              Container(height: 40, width: 1, color: Colors.grey[200]),
+
+              const SizedBox(width: 16),
+
+              // Report Submission Rate
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.description_outlined,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Reports Submitted',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      resolvableTickets == 0
+                          ? 'N/A'
+                          : '$reportsSubmitted / $resolvableTickets',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: resolvableTickets == 0
+                            ? Colors.grey
+                            : reportsSubmitted == resolvableTickets
+                            ? Colors.green
+                            : _accentOrange,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
