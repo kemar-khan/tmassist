@@ -16,10 +16,16 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   final ChecklistService _checklistService = ChecklistService();
 
   Future<void> _handleGenerate(Map<String, dynamic> ticketData) async {
+    // NEW
     final checklistItems = List<Map<String, dynamic>>.from(
-      (ticketData['checklistItems'] ?? []).map(
-        (e) => Map<String, dynamic>.from(e),
-      ),
+      (ticketData['checklistItems'] ?? []).map((e) {
+        if (e is Map<String, dynamic>) return e;
+        if (e is Map)
+          return Map<String, dynamic>.from(
+            e.map((k, v) => MapEntry(k.toString(), v)),
+          );
+        return <String, dynamic>{};
+      }),
     );
     final hasExisting = checklistItems.isNotEmpty;
 
@@ -219,9 +225,14 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         final category = (data['category'] ?? '').toString();
 
         final rawItems = List.from(data['checklistItems'] ?? []);
-        final checklistItems = rawItems
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+        final checklistItems = rawItems.map((e) {
+          if (e is Map<String, dynamic>) return e;
+          if (e is Map)
+            return Map<String, dynamic>.from(
+              e.map((k, v) => MapEntry(k.toString(), v)),
+            );
+          return <String, dynamic>{};
+        }).toList();
 
         final checklistDoneDynamic = List.from(data['checklistDone'] ?? []);
         final checklistDone = checklistDoneDynamic
