@@ -49,7 +49,6 @@ Respond ONLY with a valid JSON object. No explanation, no markdown.
 Example format:
 {
   "rootCause": "The issue was caused by...",
-  "recommendations": "To prevent recurrence, it is recommended that..."
 }
 ''';
 
@@ -72,10 +71,7 @@ Example format:
 
       final jsonString = cleaned.substring(start, end + 1);
 
-      return {
-        'rootCause': _extractField(jsonString, 'rootCause'),
-        'recommendations': _extractField(jsonString, 'recommendations'),
-      };
+      return {'rootCause': _extractField(jsonString, 'rootCause')};
     } catch (e) {
       throw Exception('Report AI generation failed: $e');
     }

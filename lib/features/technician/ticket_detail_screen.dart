@@ -125,7 +125,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
                 // 2. Action Buttons (Technician Specific)
                 _buildSectionTitle('Actions'),
-                _buildActionButtons(),
+                _buildActionButtons(data),
                 const SizedBox(height: 24),
 
                 // 3. Ticket Status & Progress Timeline
@@ -402,7 +402,16 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   // --- 2. Action Buttons Card ---
-  Widget _buildActionButtons() {
+  Widget _buildActionButtons(Map<String, dynamic> data) {
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final isInProgress = status == 'in_progress';
+
+    final checklistDone = List<bool>.from(
+      (data['checklistDone'] ?? []).map((e) => e == true),
+    );
+    final isChecklistDone =
+        checklistDone.isNotEmpty && checklistDone.every((d) => d);
+
     return Row(
       children: [
         Expanded(
@@ -410,13 +419,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             icon: Icons.checklist_rtl_rounded,
             label: "CHECKLIST",
             color: const Color(0xFFFF6600),
-            onPressed: () {
-              Navigator.pushNamed(
-                context,
-                '/tech/checklist',
-                arguments: widget.ticketId,
-              );
-            },
+            onPressed: isInProgress
+                ? () => Navigator.pushNamed(
+                    context,
+                    '/tech/checklist',
+                    arguments: widget.ticketId,
+                  )
+                : null,
           ),
         ),
         const SizedBox(width: 12),
@@ -425,13 +434,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             icon: Icons.summarize_rounded,
             label: "REPORT",
             color: const Color(0xFF005CAB),
-            onPressed: () {
-              Navigator.pushNamed(
-                context,
-                '/tech/report',
-                arguments: widget.ticketId,
-              );
-            },
+            onPressed: isInProgress && isChecklistDone
+                ? () => Navigator.pushNamed(
+                    context,
+                    '/tech/report',
+                    arguments: widget.ticketId,
+                  )
+                : null,
           ),
         ),
       ],
@@ -442,15 +451,17 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     required IconData icon,
     required String label,
     required Color color,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
+    final isDisabled = onPressed == null;
+
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
       label: Text(label),
       style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
+        backgroundColor: isDisabled ? Colors.grey.shade300 : color,
+        foregroundColor: isDisabled ? Colors.grey.shade500 : Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,

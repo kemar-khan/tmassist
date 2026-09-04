@@ -26,7 +26,6 @@ class _ReportScreenState extends State<ReportScreen> {
   String _rootCause = '';
   String _stepsTaken = '';
   String _resolutionSummary = '';
-  String _recommendations = '';
 
   Map<String, dynamic>? _ticketData;
   Map<String, dynamic>? _existingReport;
@@ -94,7 +93,6 @@ class _ReportScreenState extends State<ReportScreen> {
         _resolutionSummary =
             'Issue has been resolved by the assigned technician. '
             'All critical checklist items have been completed successfully.';
-        _recommendations = aiSections['recommendations'] ?? '';
         _reportGenerated = true;
         _ticketData = data;
       });
@@ -139,7 +137,6 @@ class _ReportScreenState extends State<ReportScreen> {
           'rootCause': _rootCause,
           'stepsTaken': _stepsTaken,
           'resolutionSummary': _resolutionSummary,
-          'recommendations': _recommendations,
           'technicianNotes': _techNotesController.text.trim(),
           'supervisorComments': '',
         },
@@ -255,12 +252,6 @@ class _ReportScreenState extends State<ReportScreen> {
           _pdfSectionTitle('RESOLUTION SUMMARY'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report?['resolutionSummary'] ?? _resolutionSummary),
-          pw.SizedBox(height: 20),
-
-          // Recommendations
-          _pdfSectionTitle('RECOMMENDATIONS'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report?['recommendations'] ?? _recommendations),
           pw.SizedBox(height: 20),
 
           // Technician Notes
@@ -519,16 +510,6 @@ class _ReportScreenState extends State<ReportScreen> {
                                 : _resolutionSummary,
                             icon: Icons.check_circle_outline,
                             isAi: false,
-                          ),
-                          const SizedBox(height: 12),
-
-                          _buildReportSection(
-                            title: 'Recommendations',
-                            content: isSubmitted
-                                ? existingReport!['recommendations'] ?? ''
-                                : _recommendations,
-                            icon: Icons.lightbulb_outline,
-                            isAi: true,
                           ),
                           const SizedBox(height: 12),
 
