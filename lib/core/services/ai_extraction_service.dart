@@ -38,7 +38,14 @@ Example format:
 
     try {
       final content = [Content.text(prompt)];
+      // Performance timing — remove after testing
+      final stopwatch = Stopwatch()..start();
       final response = await _model.generateContent(content);
+      // Performance timing — remove after testing
+      stopwatch.stop();
+      print(
+        'DEBUG [AI Extraction] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',
+      );
       final responseText = response.text ?? '';
 
       // Clean response in case Gemini adds markdown backticks

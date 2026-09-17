@@ -627,7 +627,13 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
 
     try {
       final content = [Content.text(prompt)];
+      final stopwatch = Stopwatch()..start();
       final response = await _model.generateContent(content);
+      stopwatch.stop();
+      print(
+        'DEBUG [Checklist] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',
+      );
+      print('DEBUG [Checklist] Subcategory detected: $subcategory');
       final responseText = response.text ?? '';
 
       final cleaned = responseText

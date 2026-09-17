@@ -54,7 +54,12 @@ Example format:
 
     try {
       final content = [Content.text(prompt)];
+      final stopwatch = Stopwatch()..start();
       final response = await _model.generateContent(content);
+      stopwatch.stop();
+      print(
+        'DEBUG [Report] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',
+      );
       final responseText = response.text ?? '';
 
       final cleaned = responseText
