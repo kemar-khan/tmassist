@@ -13,7 +13,7 @@ class AutoAssignmentService {
 
       if (techSnap.docs.isEmpty) return null;
 
-      // Step 2: Get all active tickets (ASSIGNED or IN_PROGRESS)
+      // Step 2: Get all active tickets (assigned or in_progress)
       final activeTicketsSnap = await _firestore
           .collection('tickets')
           .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS'])
@@ -25,66 +25,72 @@ class AutoAssignmentService {
           .where('status', isEqualTo: 'RESOLVED')
           .get();
 
-      // Step 4: Score each technician
+      // Step 4: Filter technicians by specialization priority
+      final allTechs = techSnap.docs;
+
+      // Priority 1 — exact category match
+      var candidateTechs = allTechs.where((t) {
+        final spec = t.data()['specialization']?.toString().toLowerCase() ?? '';
+        return spec == category.toLowerCase();
+      }).toList();
+
+      // Priority 2 — 'Other' specialization as fallback
+      if (candidateTechs.isEmpty) {
+        candidateTechs = allTechs.where((t) {
+          final spec =
+              t.data()['specialization']?.toString().toLowerCase() ?? '';
+          return spec == 'other';
+        }).toList();
+      }
+
+      // Priority 3 — everyone as last resort
+      if (candidateTechs.isEmpty) {
+        candidateTechs = allTechs;
+      }
+
+      // Step 5: Score each candidate
       String? bestTechnicianId;
       String? bestTechnicianName;
       double bestScore = -1;
 
-      for (final techDoc in techSnap.docs) {
+      for (final techDoc in candidateTechs) {
         final techId = techDoc.id;
         final techData = techDoc.data();
-        final specialization = techData['specialization']?.toString() ?? '';
 
-        // --- Factor 1: Skill Match (40%) ---
-        double skillScore = 0;
-        if (specialization.toLowerCase() == category.toLowerCase()) {
-          skillScore = 40;
-        } else if (specialization.toLowerCase() == 'other' ||
-            category.toLowerCase() == 'other') {
-          skillScore = 20;
-        } else {
-          skillScore = 5;
-        }
-
-        // --- Factor 2: Workload (40%) ---
+        // --- Factor 1: Workload (50%) — weighted higher now that skill is pre-filtered ---
         final activeCount = activeTicketsSnap.docs
             .where((t) => t.data()['technicianId'] == techId)
             .length;
 
         double workloadScore;
         if (activeCount == 0) {
-          workloadScore = 40;
+          workloadScore = 50;
         } else if (activeCount == 1) {
-          workloadScore = 30;
+          workloadScore = 40;
         } else if (activeCount == 2) {
-          workloadScore = 20;
+          workloadScore = 25;
         } else if (activeCount == 3) {
           workloadScore = 10;
         } else {
           workloadScore = 0;
         }
 
-        // --- Factor 3: Performance (20%) ---
-        final assignedCount = activeTicketsSnap.docs
-            .where((t) => t.data()['technicianId'] == techId)
-            .length;
-
+        // --- Factor 2: Performance (50%) ---
         final resolvedCount = resolvedTicketsSnap.docs
             .where((t) => t.data()['technicianId'] == techId)
             .length;
 
-        final totalHandled = assignedCount + resolvedCount;
+        final totalHandled = activeCount + resolvedCount;
         double performanceScore = 0;
         if (totalHandled > 0) {
           final completionRate = resolvedCount / totalHandled;
-          performanceScore = completionRate * 20;
+          performanceScore = completionRate * 50;
         } else {
-          // New technician, give benefit of the doubt
-          performanceScore = 15;
+          performanceScore = 25; // new technician, benefit of the doubt
         }
 
         // --- Total Score ---
-        final totalScore = skillScore + workloadScore + performanceScore;
+        final totalScore = workloadScore + performanceScore;
 
         if (totalScore > bestScore) {
           bestScore = totalScore;
@@ -94,9 +100,8 @@ class AutoAssignmentService {
         }
       }
 
-      // Step 5: Assign the ticket to best technician
+      // Step 6: Assign ticket to best technician
       if (bestTechnicianId != null) {
-        // Get technician name before updating
         final techDoc = await _firestore
             .collection('users')
             .doc(bestTechnicianId)

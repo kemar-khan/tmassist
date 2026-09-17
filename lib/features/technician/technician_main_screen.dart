@@ -1,8 +1,7 @@
-// lib/features/technician/technician_main_screen.dart
-
 import 'package:flutter/material.dart';
 import 'tech_home_screen.dart';
 import 'assigned_ticket_list_screen.dart';
+import 'tech_analytics_screen.dart'; // ADD THIS
 import 'profile_screen.dart';
 
 class TechnicianMainScreen extends StatefulWidget {
@@ -18,6 +17,7 @@ class _TechnicianMainScreenState extends State<TechnicianMainScreen> {
   final List<Widget> _screens = const [
     TechHomeScreen(),
     AssignedTicketsScreen(),
+    TechAnalyticsScreen(), // ADD THIS
     TechnicianProfileScreen(),
   ];
 
@@ -30,10 +30,7 @@ class _TechnicianMainScreenState extends State<TechnicianMainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         child: ClipRRect(
@@ -55,6 +52,11 @@ class _TechnicianMainScreenState extends State<TechnicianMainScreen> {
                 icon: Icon(Icons.assignment_outlined, size: 20),
                 selectedIcon: Icon(Icons.assignment_rounded, size: 22),
                 label: 'Tasks',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.bar_chart_outlined, size: 20), // ADD THIS
+                selectedIcon: Icon(Icons.bar_chart_rounded, size: 22),
+                label: 'Analytics',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline, size: 20),

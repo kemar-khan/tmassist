@@ -97,6 +97,7 @@ Example format:
     // Update ticket to mark report as submitted
     await _firestore.collection('tickets').doc(ticketId).update({
       'hasReport': true,
+      'status': 'resolved',
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

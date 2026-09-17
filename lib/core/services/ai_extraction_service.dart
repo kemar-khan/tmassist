@@ -17,7 +17,11 @@ class AiExtractionService {
 You are an AI assistant for a telecommunications company called TM (Telekom Malaysia).
 A customer has described their issue in natural language.
 
-Your job is to extract the following fields from their description:
+First, determine if the input is a relevant technical or service complaint (network, hardware, software, billing, location, or general service issues).
+If the input is random words, gibberish, or completely unrelated to any service issue, set isRelevant to "false" and leave all other fields empty.
+
+Your job is to extract the following fields:
+- isRelevant: "true" if the input is a valid issue description, "false" if it is gibberish or irrelevant
 - category: must be exactly one of these values: "Network", "Hardware", "Software", "Other"
 - title: a short, clear summary of the issue (max 10 words)
 - description: a clean, professional version of the customer's description
@@ -29,35 +33,28 @@ Customer input:
 Respond ONLY with a valid JSON object. No explanation, no markdown, no extra text.
 Example format:
 {
+  "isRelevant": "true",
   "category": "Network",
   "title": "Internet Connection Down",
-  "description": "Customer reports that their internet connection has been down since morning and is unable to browse or stream.",
+  "description": "Customer reports that their internet connection has been down since morning.",
   "address": "Puchong, Selangor"
 }
 ''';
 
     try {
       final content = [Content.text(prompt)];
-      // Performance timing — remove after testing
-      final stopwatch = Stopwatch()..start();
       final response = await _model.generateContent(content);
-      // Performance timing — remove after testing
-      stopwatch.stop();
-      print(
-        'DEBUG [AI Extraction] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',
-      );
       final responseText = response.text ?? '';
 
-      // Clean response in case Gemini adds markdown backticks
       final cleaned = responseText
           .replaceAll('```json', '')
           .replaceAll('```', '')
           .trim();
 
-      // Parse JSON
       final Map<String, dynamic> parsed = _parseJson(cleaned);
 
       return {
+        'isRelevant': parsed['isRelevant']?.toString() ?? 'true',
         'category': parsed['category']?.toString() ?? '',
         'title': parsed['title']?.toString() ?? '',
         'description': parsed['description']?.toString() ?? '',
@@ -69,7 +66,6 @@ Example format:
   }
 
   Map<String, dynamic> _parseJson(String text) {
-    // Find the first { and last } to extract JSON safely
     final start = text.indexOf('{');
     final end = text.lastIndexOf('}');
 
@@ -79,8 +75,8 @@ Example format:
 
     final jsonString = text.substring(start, end + 1);
 
-    // Manual simple JSON parser for our known fields
     return {
+      'isRelevant': _extractField(jsonString, 'isRelevant'),
       'category': _extractField(jsonString, 'category'),
       'title': _extractField(jsonString, 'title'),
       'description': _extractField(jsonString, 'description'),

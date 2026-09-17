@@ -191,6 +191,56 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         _aiInputController.text.trim(),
       );
 
+      // Edge case — irrelevant or gibberish input
+      if (result['isRelevant'] == 'false') {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            icon: const Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.orange,
+              size: 48,
+            ),
+            title: const Text(
+              'Invalid Input',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: const Text(
+              'Your description doesn\'t seem to be related to a service issue. '
+              'Please describe your actual problem, for example:\n\n'
+              '• "My internet is not working since this morning"\n'
+              '• "The WiFi router keeps disconnecting"\n'
+              '• "My TV box shows no signal"',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF005CAB),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Try Again'),
+                ),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Valid input — fill the form
       setState(() {
         _selectedCategory = result['category'];
         _titleController.text = result['title'] ?? '';
