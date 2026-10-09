@@ -21,6 +21,7 @@ class _ReportScreenState extends State<ReportScreen> {
   bool _isGenerating = false;
   bool _isSubmitting = false;
   bool _reportGenerated = false;
+  bool _isLoading = true;
 
   String _issueSummary = '';
   String _rootCause = '';
@@ -31,9 +32,57 @@ class _ReportScreenState extends State<ReportScreen> {
   Map<String, dynamic>? _existingReport;
 
   @override
-  void dispose() {
-    _techNotesController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final ticketSnap = await FirebaseFirestore.instance
+          .collection('tickets')
+          .doc(widget.ticketId)
+          .get();
+
+      final existingReport = await _reportService.getReport(widget.ticketId);
+      final draft = await _reportService.getDraft(widget.ticketId);
+
+      print('DEBUG: existingReport = $existingReport');
+      print('DEBUG: draft = $draft');
+
+      if (!mounted) return;
+
+      final ticketData = ticketSnap.exists
+          ? ticketSnap.data() as Map<String, dynamic>
+          : null;
+
+      setState(() {
+        _ticketData = ticketData;
+
+        if (existingReport != null) {
+          _existingReport = existingReport;
+          _issueSummary = existingReport['issueSummary'] ?? '';
+          _rootCause = existingReport['rootCause'] ?? '';
+          _stepsTaken = existingReport['stepsTaken'] ?? '';
+          _resolutionSummary = existingReport['resolutionSummary'] ?? '';
+          _techNotesController.text = existingReport['technicianNotes'] ?? '';
+          _reportGenerated = true;
+        } else if (draft != null) {
+          _issueSummary = draft['issueSummary'] ?? '';
+          _rootCause = draft['rootCause'] ?? '';
+          _stepsTaken = draft['stepsTaken'] ?? '';
+          _resolutionSummary = draft['resolutionSummary'] ?? '';
+          _techNotesController.text = draft['technicianNotes'] ?? '';
+          _reportGenerated = true;
+        }
+
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('DEBUG: _loadData error = $e');
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _generateReport(Map<String, dynamic> data) async {
@@ -44,7 +93,6 @@ class _ReportScreenState extends State<ReportScreen> {
       final title = data['title']?.toString() ?? '';
       final description = data['description']?.toString() ?? '';
 
-      // Get completed checklist steps
       final rawItems = data['checklistItems'];
       final checklistItems = rawItems == null
           ? <Map<String, dynamic>>[]
@@ -52,7 +100,6 @@ class _ReportScreenState extends State<ReportScreen> {
               if (e is Map) {
                 return Map<String, dynamic>.from(e);
               } else {
-                // Old format — plain string
                 return <String, dynamic>{'title': e.toString()};
               }
             }).toList();
@@ -70,7 +117,6 @@ class _ReportScreenState extends State<ReportScreen> {
         }
       }
 
-      // Build steps taken text
       final allSteps = <String>[];
       for (int i = 0; i < checklistItems.length; i++) {
         final isDone = i < checklistDone.length ? checklistDone[i] : false;
@@ -78,7 +124,6 @@ class _ReportScreenState extends State<ReportScreen> {
         allSteps.add('${isDone ? '✓' : '✗'} $title2');
       }
 
-      // Single Gemini call
       final aiSections = await _reportService.generateAiSections(
         category: category,
         title: title,
@@ -96,6 +141,19 @@ class _ReportScreenState extends State<ReportScreen> {
         _reportGenerated = true;
         _ticketData = data;
       });
+
+      _reportService.saveDraft(
+        ticketId: widget.ticketId,
+        draftData: {
+          'issueSummary': description,
+          'rootCause': aiSections['rootCause'] ?? '',
+          'stepsTaken': allSteps.join('\n'),
+          'resolutionSummary':
+              'Issue has been resolved by the assigned technician. '
+              'All critical checklist items have been completed successfully.',
+          'technicianNotes': _techNotesController.text.trim(),
+        },
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -152,6 +210,8 @@ class _ReportScreenState extends State<ReportScreen> {
       );
 
       Navigator.pop(context);
+
+      Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -177,7 +237,6 @@ class _ReportScreenState extends State<ReportScreen> {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(40),
         build: (context) => [
-          // Header
           pw.Container(
             padding: const pw.EdgeInsets.all(20),
             decoration: pw.BoxDecoration(
@@ -206,8 +265,6 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
           ),
           pw.SizedBox(height: 24),
-
-          // Ticket Info
           _pdfSectionTitle('TICKET INFORMATION'),
           pw.SizedBox(height: 8),
           _pdfInfoRow('Ticket ID', widget.ticketId),
@@ -229,32 +286,22 @@ class _ReportScreenState extends State<ReportScreen> {
             _formatTimestamp(data?['createdAt'] as Timestamp?),
           ),
           pw.SizedBox(height: 20),
-
-          // Issue Summary
           _pdfSectionTitle('ISSUE SUMMARY'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report?['issueSummary'] ?? _issueSummary),
           pw.SizedBox(height: 20),
-
-          // Root Cause
           _pdfSectionTitle('ROOT CAUSE ANALYSIS'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report?['rootCause'] ?? _rootCause),
           pw.SizedBox(height: 20),
-
-          // Steps Taken
           _pdfSectionTitle('STEPS TAKEN'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report?['stepsTaken'] ?? _stepsTaken),
           pw.SizedBox(height: 20),
-
-          // Resolution Summary
           _pdfSectionTitle('RESOLUTION SUMMARY'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report?['resolutionSummary'] ?? _resolutionSummary),
           pw.SizedBox(height: 20),
-
-          // Technician Notes
           _pdfSectionTitle('TECHNICIAN NOTES'),
           pw.SizedBox(height: 8),
           _pdfBodyText(
@@ -264,16 +311,12 @@ class _ReportScreenState extends State<ReportScreen> {
                 : _techNotesController.text.trim(),
           ),
           pw.SizedBox(height: 20),
-
-          // Supervisor Comments
           if ((report?['supervisorComments'] ?? '').toString().isNotEmpty) ...[
             _pdfSectionTitle('SUPERVISOR COMMENTS'),
             pw.SizedBox(height: 8),
             _pdfBodyText(report?['supervisorComments'] ?? ''),
             pw.SizedBox(height: 20),
           ],
-
-          // Footer
           pw.Divider(),
           pw.SizedBox(height: 8),
           pw.Text(
@@ -340,331 +383,273 @@ class _ReportScreenState extends State<ReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('tickets')
-          .doc(widget.ticketId)
-          .get(),
-      builder: (context, ticketSnapshot) {
-        if (ticketSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF5F5F5),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
-        if (!ticketSnapshot.hasData || !ticketSnapshot.data!.exists) {
-          return const Scaffold(body: Center(child: Text('Ticket not found')));
-        }
+    if (_ticketData == null) {
+      return const Scaffold(body: Center(child: Text('Ticket not found')));
+    }
 
-        final data = ticketSnapshot.data!.data() as Map<String, dynamic>;
+    final data = _ticketData!;
+    final isSubmitted = _existingReport != null;
 
-        return FutureBuilder<Map<String, dynamic>?>(
-          future: _reportService.getReport(widget.ticketId),
-          builder: (context, reportSnapshot) {
-            if (reportSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            final existingReport = reportSnapshot.data;
-            if (existingReport != null) {
-              _existingReport = existingReport;
-            }
-
-            final isSubmitted = existingReport != null;
-
-            return Scaffold(
-              backgroundColor: const Color(0xFFF5F5F5),
-              body: Column(
-                children: [
-                  // Header
-                  Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF005CAB),
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: Radius.circular(50),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: Column(
+        children: [
+          // Header
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: Color(0xFF005CAB),
+              borderRadius: BorderRadius.only(bottomLeft: Radius.circular(50)),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 24, 24),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.white,
                       ),
                     ),
-                    child: SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 24, 24),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              onPressed: () => Navigator.pop(context),
-                              icon: const Icon(
-                                Icons.arrow_back_ios,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const Text(
-                              'Service Report',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                'AI POWERED',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
+                    const Text(
+                      'Service Report',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'AI POWERED',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
-                  // Content
-                  Expanded(
-                    child: SingleChildScrollView(
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Status banner
+                  if (isSubmitted)
+                    Container(
                       padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.3),
+                        ),
+                      ),
+                      child: const Row(
                         children: [
-                          // Status banner
-                          if (isSubmitted)
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: Colors.green.withOpacity(0.3),
-                                ),
-                              ),
-                              child: const Row(
-                                children: [
-                                  Icon(
-                                    Icons.check_circle_outline,
-                                    color: Colors.green,
-                                  ),
-                                  SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Report submitted. View only mode.',
-                                      style: TextStyle(
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                          Icon(Icons.check_circle_outline, color: Colors.green),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Report submitted. View only mode.',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-
-                          if (isSubmitted) const SizedBox(height: 16),
-
-                          // Report sections
-                          _buildReportSection(
-                            title: 'Issue Summary',
-                            content: isSubmitted
-                                ? existingReport!['issueSummary'] ?? ''
-                                : _issueSummary,
-                            icon: Icons.description_outlined,
-                            isAi: false,
                           ),
-                          const SizedBox(height: 12),
-
-                          _buildReportSection(
-                            title: 'Root Cause Analysis',
-                            content: isSubmitted
-                                ? existingReport!['rootCause'] ?? ''
-                                : _rootCause,
-                            icon: Icons.search,
-                            isAi: true,
-                          ),
-                          const SizedBox(height: 12),
-
-                          _buildReportSection(
-                            title: 'Steps Taken',
-                            content: isSubmitted
-                                ? existingReport!['stepsTaken'] ?? ''
-                                : _stepsTaken,
-                            icon: Icons.checklist_rounded,
-                            isAi: false,
-                          ),
-                          const SizedBox(height: 12),
-
-                          _buildReportSection(
-                            title: 'Resolution Summary',
-                            content: isSubmitted
-                                ? existingReport!['resolutionSummary'] ?? ''
-                                : _resolutionSummary,
-                            icon: Icons.check_circle_outline,
-                            isAi: false,
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Technician Notes - editable
-                          _buildEditableSection(
-                            title: 'Technician Notes',
-                            controller: _techNotesController,
-                            hint:
-                                'Add parts replaced, observations, or additional findings...',
-                            isReadOnly: isSubmitted,
-                            existingValue: isSubmitted
-                                ? existingReport!['technicianNotes'] ?? ''
-                                : null,
-                            icon: Icons.edit_note_rounded,
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Supervisor comments - view only for technician
-                          if (isSubmitted &&
-                              (existingReport!['supervisorComments'] ?? '')
-                                  .toString()
-                                  .isNotEmpty)
-                            _buildReportSection(
-                              title: 'Supervisor Comments',
-                              content:
-                                  existingReport['supervisorComments'] ?? '',
-                              icon: Icons.supervisor_account_outlined,
-                              isAi: false,
-                            ),
-
-                          const SizedBox(height: 24),
-
-                          // Buttons
-                          if (!isSubmitted) ...[
-                            // Generate button
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: _isGenerating
-                                    ? null
-                                    : () => _generateReport(data),
-                                icon: _isGenerating
-                                    ? const SizedBox(
-                                        height: 18,
-                                        width: 18,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.auto_awesome),
-                                label: Text(
-                                  _isGenerating
-                                      ? 'Generating...'
-                                      : _reportGenerated
-                                      ? 'Regenerate Report'
-                                      : 'Generate Report',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF005CAB),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // Submit button
-                            if (_reportGenerated)
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton.icon(
-                                  onPressed: _isSubmitting
-                                      ? null
-                                      : _submitReport,
-                                  icon: _isSubmitting
-                                      ? const SizedBox(
-                                          height: 18,
-                                          width: 18,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.send_rounded),
-                                  label: const Text(
-                                    'Submit Report',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFFF6600),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-
-                          // Export PDF button
-                          if (isSubmitted || _reportGenerated)
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _exportPdf,
-                                icon: const Icon(
-                                  Icons.picture_as_pdf_rounded,
-                                  color: Color(0xFF005CAB),
-                                ),
-                                label: const Text(
-                                  'Export as PDF',
-                                  style: TextStyle(
-                                    color: Color(0xFF005CAB),
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                  ),
-                                  side: const BorderSide(
-                                    color: Color(0xFF005CAB),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          const SizedBox(height: 32),
                         ],
                       ),
                     ),
+
+                  if (isSubmitted) const SizedBox(height: 16),
+
+                  _buildReportSection(
+                    title: 'Issue Summary',
+                    content: _issueSummary,
+                    icon: Icons.description_outlined,
+                    isAi: false,
                   ),
+                  const SizedBox(height: 12),
+
+                  _buildReportSection(
+                    title: 'Root Cause Analysis',
+                    content: _rootCause,
+                    icon: Icons.search,
+                    isAi: true,
+                  ),
+                  const SizedBox(height: 12),
+
+                  _buildReportSection(
+                    title: 'Steps Taken',
+                    content: _stepsTaken,
+                    icon: Icons.checklist_rounded,
+                    isAi: false,
+                  ),
+                  const SizedBox(height: 12),
+
+                  _buildReportSection(
+                    title: 'Resolution Summary',
+                    content: _resolutionSummary,
+                    icon: Icons.check_circle_outline,
+                    isAi: false,
+                  ),
+                  const SizedBox(height: 12),
+
+                  _buildEditableSection(
+                    title: 'Technician Notes',
+                    controller: _techNotesController,
+                    hint:
+                        'Add parts replaced, observations, or additional findings...',
+                    isReadOnly: isSubmitted,
+                    existingValue: isSubmitted
+                        ? _existingReport!['technicianNotes'] ?? ''
+                        : null,
+                    icon: Icons.edit_note_rounded,
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (isSubmitted &&
+                      (_existingReport!['supervisorComments'] ?? '')
+                          .toString()
+                          .isNotEmpty)
+                    _buildReportSection(
+                      title: 'Supervisor Comments',
+                      content: _existingReport!['supervisorComments'] ?? '',
+                      icon: Icons.supervisor_account_outlined,
+                      isAi: false,
+                    ),
+
+                  const SizedBox(height: 24),
+
+                  // Buttons
+                  if (!isSubmitted) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isGenerating
+                            ? null
+                            : () => _generateReport(data),
+                        icon: _isGenerating
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.auto_awesome),
+                        label: Text(
+                          _isGenerating
+                              ? 'Generating...'
+                              : _reportGenerated
+                              ? 'Regenerate Report'
+                              : 'Generate Report',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF005CAB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    if (_reportGenerated)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isSubmitting ? null : _submitReport,
+                          icon: _isSubmitting
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.send_rounded),
+                          label: const Text(
+                            'Submit Report',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6600),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+
+                  if (isSubmitted || _reportGenerated)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _exportPdf,
+                        icon: const Icon(
+                          Icons.picture_as_pdf_rounded,
+                          color: Color(0xFF005CAB),
+                        ),
+                        label: const Text(
+                          'Export as PDF',
+                          style: TextStyle(
+                            color: Color(0xFF005CAB),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: const BorderSide(color: Color(0xFF005CAB)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 32),
                 ],
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -821,5 +806,11 @@ class _ReportScreenState extends State<ReportScreen> {
     if (timestamp == null) return '-';
     final date = timestamp.toDate();
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  @override
+  void dispose() {
+    _techNotesController.dispose();
+    super.dispose();
   }
 }

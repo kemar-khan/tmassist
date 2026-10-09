@@ -109,6 +109,26 @@ Example format:
     return doc.data();
   }
 
+  Future<void> saveDraft({
+    required String ticketId,
+    required Map<String, dynamic> draftData,
+  }) async {
+    await _firestore.collection('drafts').doc(ticketId).set({
+      ...draftData,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<Map<String, dynamic>?> getDraft(String ticketId) async {
+    final doc = await _firestore.collection('drafts').doc(ticketId).get();
+    if (!doc.exists) return null;
+    return doc.data();
+  }
+
+  Future<void> deleteDraft(String ticketId) async {
+    await _firestore.collection('drafts').doc(ticketId).delete();
+  }
+
   Future<void> addSupervisorComment({
     required String ticketId,
     required String comment,

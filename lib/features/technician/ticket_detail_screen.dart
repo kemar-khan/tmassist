@@ -405,6 +405,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   Widget _buildActionButtons(Map<String, dynamic> data) {
     final status = (data['status'] ?? '').toString().toLowerCase();
     final isInProgress = status == 'in_progress';
+    final isResolved = status == 'resolved';
 
     final checklistDone = List<bool>.from(
       (data['checklistDone'] ?? []).map((e) => e == true),
@@ -434,7 +435,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             icon: Icons.summarize_rounded,
             label: "REPORT",
             color: const Color(0xFF005CAB),
-            onPressed: isInProgress && isChecklistDone
+            onPressed: isInProgress && isChecklistDone || isResolved
                 ? () => Navigator.pushNamed(
                     context,
                     '/tech/report',
