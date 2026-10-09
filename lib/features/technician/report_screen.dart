@@ -24,7 +24,6 @@ class _ReportScreenState extends State<ReportScreen> {
   bool _isLoading = true;
 
   String _issueSummary = '';
-  String _rootCause = '';
   String _stepsTaken = '';
   String _resolutionSummary = '';
 
@@ -47,9 +46,6 @@ class _ReportScreenState extends State<ReportScreen> {
       final existingReport = await _reportService.getReport(widget.ticketId);
       final draft = await _reportService.getDraft(widget.ticketId);
 
-      print('DEBUG: existingReport = $existingReport');
-      print('DEBUG: draft = $draft');
-
       if (!mounted) return;
 
       final ticketData = ticketSnap.exists
@@ -62,14 +58,12 @@ class _ReportScreenState extends State<ReportScreen> {
         if (existingReport != null) {
           _existingReport = existingReport;
           _issueSummary = existingReport['issueSummary'] ?? '';
-          _rootCause = existingReport['rootCause'] ?? '';
           _stepsTaken = existingReport['stepsTaken'] ?? '';
           _resolutionSummary = existingReport['resolutionSummary'] ?? '';
           _techNotesController.text = existingReport['technicianNotes'] ?? '';
           _reportGenerated = true;
         } else if (draft != null) {
           _issueSummary = draft['issueSummary'] ?? '';
-          _rootCause = draft['rootCause'] ?? '';
           _stepsTaken = draft['stepsTaken'] ?? '';
           _resolutionSummary = draft['resolutionSummary'] ?? '';
           _techNotesController.text = draft['technicianNotes'] ?? '';
@@ -79,7 +73,6 @@ class _ReportScreenState extends State<ReportScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('DEBUG: _loadData error = $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
     }
@@ -89,8 +82,6 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() => _isGenerating = true);
 
     try {
-      final category = data['category']?.toString() ?? 'General';
-      final title = data['title']?.toString() ?? '';
       final description = data['description']?.toString() ?? '';
 
       final rawItems = data['checklistItems'];
@@ -109,35 +100,23 @@ class _ReportScreenState extends State<ReportScreen> {
           ? <bool>[]
           : List<dynamic>.from(rawDone).map((e) => e == true).toList();
 
-      final completedSteps = <String>[];
-      for (int i = 0; i < checklistItems.length; i++) {
-        final isDone = i < checklistDone.length ? checklistDone[i] : false;
-        if (isDone) {
-          completedSteps.add(checklistItems[i]['title']?.toString() ?? '');
-        }
-      }
-
       final allSteps = <String>[];
       for (int i = 0; i < checklistItems.length; i++) {
         final isDone = i < checklistDone.length ? checklistDone[i] : false;
-        final title2 = checklistItems[i]['title']?.toString() ?? '';
-        allSteps.add('${isDone ? '✓' : '✗'} $title2');
+        final title = checklistItems[i]['title']?.toString() ?? '';
+        allSteps.add('${isDone ? '✓' : '✗'} $title');
       }
 
-      final aiSections = await _reportService.generateAiSections(
-        category: category,
-        title: title,
-        description: description,
-        completedSteps: completedSteps,
-      );
+      final issueSummary = description;
+      final stepsTaken = allSteps.join('\n');
+      const resolutionSummary =
+          'Issue has been resolved by the assigned technician. '
+          'All critical checklist items have been completed successfully.';
 
       setState(() {
-        _issueSummary = description;
-        _rootCause = aiSections['rootCause'] ?? '';
-        _stepsTaken = allSteps.join('\n');
-        _resolutionSummary =
-            'Issue has been resolved by the assigned technician. '
-            'All critical checklist items have been completed successfully.';
+        _issueSummary = issueSummary;
+        _stepsTaken = stepsTaken;
+        _resolutionSummary = resolutionSummary;
         _reportGenerated = true;
         _ticketData = data;
       });
@@ -145,12 +124,9 @@ class _ReportScreenState extends State<ReportScreen> {
       _reportService.saveDraft(
         ticketId: widget.ticketId,
         draftData: {
-          'issueSummary': description,
-          'rootCause': aiSections['rootCause'] ?? '',
-          'stepsTaken': allSteps.join('\n'),
-          'resolutionSummary':
-              'Issue has been resolved by the assigned technician. '
-              'All critical checklist items have been completed successfully.',
+          'issueSummary': issueSummary,
+          'stepsTaken': stepsTaken,
+          'resolutionSummary': resolutionSummary,
           'technicianNotes': _techNotesController.text.trim(),
         },
       );
@@ -192,7 +168,6 @@ class _ReportScreenState extends State<ReportScreen> {
           'address': data['address']?.toString() ?? '',
           'createdAt': data['createdAt'],
           'issueSummary': _issueSummary,
-          'rootCause': _rootCause,
           'stepsTaken': _stepsTaken,
           'resolutionSummary': _resolutionSummary,
           'technicianNotes': _techNotesController.text.trim(),
@@ -202,14 +177,14 @@ class _ReportScreenState extends State<ReportScreen> {
 
       if (!mounted) return;
 
+      await _reportService.deleteDraft(widget.ticketId);
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Report submitted successfully!'),
           backgroundColor: Colors.green,
         ),
       );
-
-      Navigator.pop(context);
 
       Navigator.pop(context);
     } catch (e) {
@@ -289,10 +264,6 @@ class _ReportScreenState extends State<ReportScreen> {
           _pdfSectionTitle('ISSUE SUMMARY'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report?['issueSummary'] ?? _issueSummary),
-          pw.SizedBox(height: 20),
-          _pdfSectionTitle('ROOT CAUSE ANALYSIS'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report?['rootCause'] ?? _rootCause),
           pw.SizedBox(height: 20),
           _pdfSectionTitle('STEPS TAKEN'),
           pw.SizedBox(height: 8),
@@ -428,25 +399,6 @@ class _ReportScreenState extends State<ReportScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'AI POWERED',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -460,7 +412,6 @@ class _ReportScreenState extends State<ReportScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Status banner
                   if (isSubmitted)
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -494,15 +445,6 @@ class _ReportScreenState extends State<ReportScreen> {
                     title: 'Issue Summary',
                     content: _issueSummary,
                     icon: Icons.description_outlined,
-                    isAi: false,
-                  ),
-                  const SizedBox(height: 12),
-
-                  _buildReportSection(
-                    title: 'Root Cause Analysis',
-                    content: _rootCause,
-                    icon: Icons.search,
-                    isAi: true,
                   ),
                   const SizedBox(height: 12),
 
@@ -510,7 +452,6 @@ class _ReportScreenState extends State<ReportScreen> {
                     title: 'Steps Taken',
                     content: _stepsTaken,
                     icon: Icons.checklist_rounded,
-                    isAi: false,
                   ),
                   const SizedBox(height: 12),
 
@@ -518,7 +459,6 @@ class _ReportScreenState extends State<ReportScreen> {
                     title: 'Resolution Summary',
                     content: _resolutionSummary,
                     icon: Icons.check_circle_outline,
-                    isAi: false,
                   ),
                   const SizedBox(height: 12),
 
@@ -543,12 +483,10 @@ class _ReportScreenState extends State<ReportScreen> {
                       title: 'Supervisor Comments',
                       content: _existingReport!['supervisorComments'] ?? '',
                       icon: Icons.supervisor_account_outlined,
-                      isAi: false,
                     ),
 
                   const SizedBox(height: 24),
 
-                  // Buttons
                   if (!isSubmitted) ...[
                     SizedBox(
                       width: double.infinity,
@@ -565,7 +503,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.auto_awesome),
+                            : const Icon(Icons.summarize_rounded),
                         label: Text(
                           _isGenerating
                               ? 'Generating...'
@@ -657,7 +595,6 @@ class _ReportScreenState extends State<ReportScreen> {
     required String title,
     required String content,
     required IconData icon,
-    required bool isAi,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -689,25 +626,6 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                 ),
               ),
-              if (isAi)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF005CAB).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'AI',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF005CAB),
-                    ),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -746,7 +664,6 @@ class _ReportScreenState extends State<ReportScreen> {
         title: title,
         content: existingValue.isEmpty ? 'No additional notes.' : existingValue,
         icon: icon,
-        isAi: false,
       );
     }
 

@@ -273,7 +273,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               ),
                             ),
                             const Text(
-                              'AI Checklist',
+                              'Checklist Generation',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 22,
@@ -281,24 +281,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                'AI POWERED',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                         Padding(

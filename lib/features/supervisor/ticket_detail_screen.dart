@@ -142,10 +142,6 @@ class _SupervisorTicketDetailScreenState
           pw.SizedBox(height: 8),
           _pdfBodyText(report['issueSummary'] ?? '-'),
           pw.SizedBox(height: 20),
-          _pdfSectionTitle('ROOT CAUSE ANALYSIS'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report['rootCause'] ?? '-'),
-          pw.SizedBox(height: 20),
           _pdfSectionTitle('STEPS TAKEN'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report['stepsTaken'] ?? '-'),
@@ -153,10 +149,6 @@ class _SupervisorTicketDetailScreenState
           _pdfSectionTitle('RESOLUTION SUMMARY'),
           pw.SizedBox(height: 8),
           _pdfBodyText(report['resolutionSummary'] ?? '-'),
-          pw.SizedBox(height: 20),
-          _pdfSectionTitle('RECOMMENDATIONS'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report['recommendations'] ?? '-'),
           pw.SizedBox(height: 20),
           _pdfSectionTitle('TECHNICIAN NOTES'),
           pw.SizedBox(height: 8),
@@ -936,12 +928,7 @@ class _SupervisorTicketDetailScreenState
             isAi: false,
           ),
           _buildDivider(),
-          _buildReportRow(
-            'Root Cause Analysis',
-            report['rootCause'] ?? '-',
-            isAi: true,
-          ),
-          _buildDivider(),
+
           _buildReportRow(
             'Steps Taken',
             report['stepsTaken'] ?? '-',
@@ -952,12 +939,6 @@ class _SupervisorTicketDetailScreenState
             'Resolution Summary',
             report['resolutionSummary'] ?? '-',
             isAi: false,
-          ),
-          _buildDivider(),
-          _buildReportRow(
-            'Recommendations',
-            report['recommendations'] ?? '-',
-            isAi: true,
           ),
           _buildDivider(),
           _buildReportRow(
