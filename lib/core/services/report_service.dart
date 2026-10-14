@@ -17,7 +17,7 @@ class ReportService {
 
     await _firestore.collection('tickets').doc(ticketId).update({
       'hasReport': true,
-      'status': 'resolved',
+      'status': 'RESOLVED',
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
