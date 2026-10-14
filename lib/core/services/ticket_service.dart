@@ -11,6 +11,7 @@ class TicketService {
     required String title,
     required String description,
     required String address,
+    required String area,
     required String contactNumber,
     String? attachmentUrl,
   }) async {
@@ -32,6 +33,7 @@ class TicketService {
       'title': title.trim(),
       'description': description.trim(),
       'address': address.trim(),
+      'area': area.trim(),
       'contactNumber': contactNumber.trim(),
       'attachmentUrl': attachmentUrl,
       'status': 'NEW',
@@ -46,23 +48,15 @@ class TicketService {
     });
 
     // Step 2: Auto assign best technician
-    // Step 2: Auto assign best technician
     try {
-      print('=== AUTO ASSIGNMENT STARTING ===');
-      print('Ticket ID: ${ticketRef.id}');
-      print('Category: ${category.trim()}');
-
       final autoAssignmentService = AutoAssignmentService();
-      final assignedId = await autoAssignmentService.assignBestTechnician(
+      await autoAssignmentService.assignBestTechnician(
         ticketRef.id,
         category.trim(),
+        area: area.trim(),
       );
-
-      print('=== AUTO ASSIGNMENT RESULT ===');
-      print('Assigned Technician ID: $assignedId');
     } catch (e) {
-      print('=== AUTO ASSIGNMENT ERROR ===');
-      print('Error: $e');
+      print('Auto assignment error: $e');
     }
   }
 }

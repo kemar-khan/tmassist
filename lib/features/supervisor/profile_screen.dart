@@ -49,8 +49,8 @@ class SupervisorProfileScreen extends StatelessWidget {
         final email = (data?['email'] ?? firebaseUser.email ?? '-').toString();
         final staffId = (data?['staffId'] ?? data?['employeeId'] ?? 'TM-99821')
             .toString();
-        final department = (data?['department'] ?? 'Network Operations')
-            .toString();
+        final department =
+            (data?['department'] ?? 'Field Technician Supervisor').toString();
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),

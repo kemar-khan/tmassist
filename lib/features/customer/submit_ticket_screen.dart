@@ -4,6 +4,7 @@ import '../../core/services/cloudinary_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../core/services/ai_extraction_service.dart';
+import '../../core/constants/service_areas.dart';
 
 class SubmitTicketScreen extends StatefulWidget {
   const SubmitTicketScreen({super.key});
@@ -38,6 +39,8 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
 
   final AiExtractionService _aiExtractionService = AiExtractionService();
   String? _selectedCategory;
+  String? _selectedArea;
+  String? _area;
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
@@ -54,6 +57,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         title: _title!,
         description: _description!,
         address: _address!,
+        area: _area!,
         contactNumber: _contactNumber!,
         attachmentUrl: _attachmentUrl, // add file upload later
       );
@@ -250,6 +254,10 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
           _addressController.text = result['address']!;
           _address = result['address'];
         }
+        final aiArea = result['area'];
+        if (aiArea != null && ServiceAreas.all.contains(aiArea)) {
+          _selectedArea = aiArea;
+        }
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -382,6 +390,23 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                         return null;
                       },
                       onSaved: (val) => _address = val?.trim(),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      decoration: _inputDecoration('Area', Icons.map_outlined),
+                      value: _selectedArea,
+                      items: ServiceAreas.all
+                          .map(
+                            (e) => DropdownMenuItem<String>(
+                              value: e,
+                              child: Text(e),
+                            ),
+                          )
+                          .toList(),
+                      validator: (val) =>
+                          val == null ? 'Please select an area' : null,
+                      onSaved: (val) => _area = val,
+                      onChanged: (val) => setState(() => _selectedArea = val),
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton.icon(

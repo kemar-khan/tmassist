@@ -4,6 +4,8 @@ import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../core/services/report_service.dart';
+import '../../core/services/cloudinary_service.dart';
+import '../../core/services/report_pdf_service.dart';
 
 class ReportScreen extends StatefulWidget {
   final String ticketId;
@@ -26,6 +28,8 @@ class _ReportScreenState extends State<ReportScreen> {
   String _issueSummary = '';
   String _stepsTaken = '';
   String _resolutionSummary = '';
+  String _proofUrl = '';
+  bool _isUploadingProof = false;
 
   Map<String, dynamic>? _ticketData;
   Map<String, dynamic>? _existingReport;
@@ -61,12 +65,14 @@ class _ReportScreenState extends State<ReportScreen> {
           _stepsTaken = existingReport['stepsTaken'] ?? '';
           _resolutionSummary = existingReport['resolutionSummary'] ?? '';
           _techNotesController.text = existingReport['technicianNotes'] ?? '';
+          _proofUrl = existingReport['proofUrl'] ?? '';
           _reportGenerated = true;
         } else if (draft != null) {
           _issueSummary = draft['issueSummary'] ?? '';
           _stepsTaken = draft['stepsTaken'] ?? '';
           _resolutionSummary = draft['resolutionSummary'] ?? '';
           _techNotesController.text = draft['technicianNotes'] ?? '';
+          _proofUrl = draft['proofUrl'] ?? '';
           _reportGenerated = true;
         }
 
@@ -128,6 +134,7 @@ class _ReportScreenState extends State<ReportScreen> {
           'stepsTaken': stepsTaken,
           'resolutionSummary': resolutionSummary,
           'technicianNotes': _techNotesController.text.trim(),
+          'proofUrl': _proofUrl,
         },
       );
 
@@ -147,6 +154,46 @@ class _ReportScreenState extends State<ReportScreen> {
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
+  }
+
+  Future<void> _uploadProof() async {
+    setState(() => _isUploadingProof = true);
+    try {
+      final url = await CloudinaryService().uploadFile();
+      if (!mounted) return;
+      setState(() => _proofUrl = url);
+      await _saveDraftNow();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isUploadingProof = false);
+    }
+  }
+
+  Future<void> _removeProof() async {
+    setState(() => _proofUrl = '');
+    await _saveDraftNow();
+  }
+
+  // Keeps the draft in sync after the report has been generated
+  Future<void> _saveDraftNow() async {
+    if (!_reportGenerated) return;
+    await _reportService.saveDraft(
+      ticketId: widget.ticketId,
+      draftData: {
+        'issueSummary': _issueSummary,
+        'stepsTaken': _stepsTaken,
+        'resolutionSummary': _resolutionSummary,
+        'technicianNotes': _techNotesController.text.trim(),
+        'proofUrl': _proofUrl,
+      },
+    );
   }
 
   Future<void> _submitReport() async {
@@ -172,6 +219,7 @@ class _ReportScreenState extends State<ReportScreen> {
           'resolutionSummary': _resolutionSummary,
           'technicianNotes': _techNotesController.text.trim(),
           'supervisorComments': '',
+          'proofUrl': _proofUrl,
         },
       );
 
@@ -203,153 +251,22 @@ class _ReportScreenState extends State<ReportScreen> {
     if (!_reportGenerated && _existingReport == null) return;
 
     final data = _ticketData;
-    final report = _existingReport;
+    final report =
+        _existingReport ??
+        {
+          'category': data?['category'],
+          'customerName': data?['customerName'],
+          'technicianName': data?['technicianName'],
+          'address': data?['address'],
+          'createdAt': data?['createdAt'],
+          'issueSummary': _issueSummary,
+          'stepsTaken': _stepsTaken,
+          'resolutionSummary': _resolutionSummary,
+          'technicianNotes': _techNotesController.text.trim(),
+          'proofUrl': _proofUrl,
+        };
 
-    final pdf = pw.Document();
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(40),
-        build: (context) => [
-          pw.Container(
-            padding: const pw.EdgeInsets.all(20),
-            decoration: pw.BoxDecoration(
-              color: PdfColor.fromHex('005CAB'),
-              borderRadius: pw.BorderRadius.circular(8),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'TM ASSIST',
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 24,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.Text(
-                  'Service Report',
-                  style: const pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          pw.SizedBox(height: 24),
-          _pdfSectionTitle('TICKET INFORMATION'),
-          pw.SizedBox(height: 8),
-          _pdfInfoRow('Ticket ID', widget.ticketId),
-          _pdfInfoRow(
-            'Category',
-            report?['category'] ?? data?['category'] ?? '-',
-          ),
-          _pdfInfoRow(
-            'Customer Name',
-            report?['customerName'] ?? data?['customerName'] ?? '-',
-          ),
-          _pdfInfoRow(
-            'Technician',
-            report?['technicianName'] ?? data?['technicianName'] ?? '-',
-          ),
-          _pdfInfoRow('Address', report?['address'] ?? data?['address'] ?? '-'),
-          _pdfInfoRow(
-            'Date Submitted',
-            _formatTimestamp(data?['createdAt'] as Timestamp?),
-          ),
-          pw.SizedBox(height: 20),
-          _pdfSectionTitle('ISSUE SUMMARY'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report?['issueSummary'] ?? _issueSummary),
-          pw.SizedBox(height: 20),
-          _pdfSectionTitle('STEPS TAKEN'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report?['stepsTaken'] ?? _stepsTaken),
-          pw.SizedBox(height: 20),
-          _pdfSectionTitle('RESOLUTION SUMMARY'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(report?['resolutionSummary'] ?? _resolutionSummary),
-          pw.SizedBox(height: 20),
-          _pdfSectionTitle('TECHNICIAN NOTES'),
-          pw.SizedBox(height: 8),
-          _pdfBodyText(
-            report?['technicianNotes'] ??
-                    _techNotesController.text.trim().isEmpty
-                ? 'No additional notes.'
-                : _techNotesController.text.trim(),
-          ),
-          pw.SizedBox(height: 20),
-          if ((report?['supervisorComments'] ?? '').toString().isNotEmpty) ...[
-            _pdfSectionTitle('SUPERVISOR COMMENTS'),
-            pw.SizedBox(height: 8),
-            _pdfBodyText(report?['supervisorComments'] ?? ''),
-            pw.SizedBox(height: 20),
-          ],
-          pw.Divider(),
-          pw.SizedBox(height: 8),
-          pw.Text(
-            'Generated by TM Assist — ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
-            style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10),
-          ),
-        ],
-      ),
-    );
-
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
-  }
-
-  pw.Widget _pdfSectionTitle(String title) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: pw.BoxDecoration(
-        color: PdfColor.fromHex('005CAB'),
-        borderRadius: pw.BorderRadius.circular(4),
-      ),
-      child: pw.Text(
-        title,
-        style: pw.TextStyle(
-          color: PdfColors.white,
-          fontSize: 12,
-          fontWeight: pw.FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  pw.Widget _pdfInfoRow(String label, String value) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4),
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.SizedBox(
-            width: 120,
-            child: pw.Text(
-              label,
-              style: pw.TextStyle(
-                fontSize: 11,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.grey700,
-              ),
-            ),
-          ),
-          pw.Text(': ', style: const pw.TextStyle(fontSize: 11)),
-          pw.Expanded(
-            child: pw.Text(value, style: const pw.TextStyle(fontSize: 11)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _pdfBodyText(String text) {
-    return pw.Text(
-      text,
-      style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey800),
-    );
+    await ReportPdfService.export(ticketId: widget.ticketId, report: report);
   }
 
   @override
@@ -474,6 +391,8 @@ class _ReportScreenState extends State<ReportScreen> {
                     icon: Icons.edit_note_rounded,
                   ),
                   const SizedBox(height: 12),
+                  _buildProofSection(isSubmitted),
+                  const SizedBox(height: 12),
 
                   if (isSubmitted &&
                       (_existingReport!['supervisorComments'] ?? '')
@@ -488,48 +407,14 @@ class _ReportScreenState extends State<ReportScreen> {
                   const SizedBox(height: 24),
 
                   if (!isSubmitted) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isGenerating
-                            ? null
-                            : () => _generateReport(data),
-                        icon: _isGenerating
-                            ? const SizedBox(
-                                height: 18,
-                                width: 18,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.summarize_rounded),
-                        label: Text(
-                          _isGenerating
-                              ? 'Generating...'
-                              : _reportGenerated
-                              ? 'Regenerate Report'
-                              : 'Generate Report',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF005CAB),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (_reportGenerated)
+                    if (!_reportGenerated) ...[
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: _isSubmitting ? null : _submitReport,
-                          icon: _isSubmitting
+                          onPressed: _isGenerating
+                              ? null
+                              : () => _generateReport(data),
+                          icon: _isGenerating
                               ? const SizedBox(
                                   height: 18,
                                   width: 18,
@@ -538,13 +423,13 @@ class _ReportScreenState extends State<ReportScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Icon(Icons.send_rounded),
-                          label: const Text(
-                            'Submit Report',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                              : const Icon(Icons.summarize_rounded),
+                          label: Text(
+                            _isGenerating ? 'Generating...' : 'Generate Report',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF6600),
+                            backgroundColor: const Color(0xFF005CAB),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
@@ -553,32 +438,70 @@ class _ReportScreenState extends State<ReportScreen> {
                           ),
                         ),
                       ),
+                    ],
                   ],
 
+                  // Export and Submit sit side by side; Export fills the row
+                  // on its own once the report has been submitted.
                   if (isSubmitted || _reportGenerated)
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _exportPdf,
-                        icon: const Icon(
-                          Icons.picture_as_pdf_rounded,
-                          color: Color(0xFF005CAB),
-                        ),
-                        label: const Text(
-                          'Export as PDF',
-                          style: TextStyle(
-                            color: Color(0xFF005CAB),
-                            fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _exportPdf,
+                            icon: const Icon(
+                              Icons.picture_as_pdf_rounded,
+                              color: Color(0xFF005CAB),
+                            ),
+                            label: const Text(
+                              'Export as PDF',
+                              style: TextStyle(
+                                color: Color(0xFF005CAB),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              side: const BorderSide(color: Color(0xFF005CAB)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
                           ),
                         ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: const BorderSide(color: Color(0xFF005CAB)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        if (!isSubmitted && _reportGenerated) ...[
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _isSubmitting ? null : _submitReport,
+                              icon: _isSubmitting
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.send_rounded),
+                              label: const Text(
+                                'Submit Report',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF6600),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        ],
+                      ],
                     ),
 
                   const SizedBox(height: 32),
@@ -714,6 +637,175 @@ class _ReportScreenState extends State<ReportScreen> {
               height: 1.5,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProofSection(bool isSubmitted) {
+    final hasProof = _proofUrl.isNotEmpty;
+    final isPdf = _proofUrl.toLowerCase().endsWith('.pdf');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.photo_camera_outlined,
+                size: 18,
+                color: Color(0xFF005CAB),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Proof of Completion',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF333333),
+                  ),
+                ),
+              ),
+              if (!isSubmitted)
+                Text(
+                  'Optional',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (hasProof) ...[
+            GestureDetector(
+              onTap: isPdf
+                  ? null
+                  : () => showDialog(
+                      context: context,
+                      builder: (_) => Dialog(
+                        child: InteractiveViewer(
+                          child: Image.network(_proofUrl),
+                        ),
+                      ),
+                    ),
+              child: isPdf
+                  ? Row(
+                      children: [
+                        const Icon(
+                          Icons.picture_as_pdf,
+                          color: Colors.red,
+                          size: 36,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _proofUrl.split('/').last,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        _proofUrl,
+                        height: 200,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, progress) =>
+                            progress == null
+                            ? child
+                            : const SizedBox(
+                                height: 200,
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              ),
+                        errorBuilder: (_, __, ___) => const SizedBox(
+                          height: 200,
+                          child: Center(
+                            child: Icon(Icons.broken_image, size: 50),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+            if (!isSubmitted) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: _isUploadingProof ? null : _uploadProof,
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: const Text('Replace'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _removeProof,
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 18,
+                      color: Colors.red,
+                    ),
+                    label: const Text(
+                      'Remove',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ] else if (isSubmitted)
+            Text(
+              'No proof attached.',
+              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+            )
+          else
+            InkWell(
+              onTap: _isUploadingProof ? null : _uploadProof,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      _isUploadingProof
+                          ? Icons.hourglass_top_rounded
+                          : Icons.add_a_photo_outlined,
+                      size: 30,
+                      color: _isUploadingProof
+                          ? Colors.orange
+                          : Colors.grey[500],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _isUploadingProof
+                          ? 'Uploading...'
+                          : 'Tap to attach a photo as proof',
+                      style: TextStyle(color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

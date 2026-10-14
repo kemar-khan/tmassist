@@ -1,5 +1,6 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../../config/app_constants.dart';
+import '../constants/service_areas.dart';
 
 class AiExtractionService {
   late final GenerativeModel _model;
@@ -26,6 +27,7 @@ Your job is to extract the following fields:
 - title: a short, clear summary of the issue (max 10 words)
 - description: a clean, professional version of the customer's description
 - address: the location mentioned by the customer, or empty string if not mentioned
+- area: must be exactly one of these values: ${ServiceAreas.all.map((a) => '"$a"').join(', ')}. Pick the closest match to the location mentioned. Use "Other" if the location is unclear or not in the list.
 
 Customer input:
 "$userInput"
@@ -38,6 +40,7 @@ Example format:
   "title": "Internet Connection Down",
   "description": "Customer reports that their internet connection has been down since morning.",
   "address": "Puchong, Selangor"
+  "area":"Puchong"
 }
 ''';
 
@@ -59,6 +62,7 @@ Example format:
         'title': parsed['title']?.toString() ?? '',
         'description': parsed['description']?.toString() ?? '',
         'address': parsed['address']?.toString() ?? '',
+        'area': parsed['area']?.toString() ?? '',
       };
     } catch (e) {
       throw Exception('AI extraction failed: $e');
@@ -81,6 +85,7 @@ Example format:
       'title': _extractField(jsonString, 'title'),
       'description': _extractField(jsonString, 'description'),
       'address': _extractField(jsonString, 'address'),
+      'area': _extractField(jsonString, 'area'),
     };
   }
 

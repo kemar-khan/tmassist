@@ -1,10 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/service_areas.dart';
 
-class SupervisorHomeScreen extends StatelessWidget {
+class SupervisorHomeScreen extends StatefulWidget {
   const SupervisorHomeScreen({super.key});
 
+  @override
+  State<SupervisorHomeScreen> createState() => _SupervisorHomeScreenState();
+}
+
+class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
+  String? _selectedCategory;
   @override
   Widget build(BuildContext context) {
     final firebaseUser = FirebaseAuth.instance.currentUser;
@@ -61,6 +68,8 @@ class SupervisorHomeScreen extends StatelessWidget {
                 'technicianId': data['technicianId'],
                 'technicianName': (data['technicianName'] ?? '').toString(),
                 'createdAt': data['createdAt'],
+                'area': (data['area'] ?? '').toString(),
+                'category': (data['category'] ?? '').toString(),
               };
             }).toList();
 
@@ -85,6 +94,20 @@ class SupervisorHomeScreen extends StatelessWidget {
             final maxWeeklyCount = weeklyCounts.values.isEmpty
                 ? 0
                 : weeklyCounts.values.reduce((a, b) => a > b ? a : b);
+
+            const categoryKeys = ['Network', 'Hardware', 'Software', 'Other'];
+
+            final categoryTotals = {
+              for (final c in categoryKeys)
+                c: tickets.where((t) => _categoryOf(t) == c).length,
+            };
+
+            final filteredTickets = _selectedCategory == null
+                ? tickets
+                : tickets
+                      .where((t) => _categoryOf(t) == _selectedCategory)
+                      .toList();
+            final isFiltering = _selectedCategory != null;
 
             return Scaffold(
               backgroundColor: const Color(0xFFF5F5F5),
@@ -460,6 +483,9 @@ class SupervisorHomeScreen extends StatelessWidget {
                     ),
 
                     const SizedBox(height: 32),
+                    // Tickets by Location
+                    _buildCategoryOverview(categoryKeys, categoryTotals),
+                    const SizedBox(height: 32),
 
                     // 4. Recent Tickets
                     Padding(
@@ -491,7 +517,35 @@ class SupervisorHomeScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
 
-                          if (tickets.isEmpty)
+                          if (isFiltering)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Showing: $_selectedCategory (${filteredTickets.length})',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => setState(() {
+                                      _selectedCategory = null;
+                                    }),
+                                    child: const Text(
+                                      'Clear',
+                                      style: TextStyle(
+                                        color: Color(0xFF005CAB),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (filteredTickets.isEmpty)
                             const Center(
                               child: Padding(
                                 padding: EdgeInsets.all(32.0),
@@ -503,13 +557,15 @@ class SupervisorHomeScreen extends StatelessWidget {
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               padding: const EdgeInsets.only(bottom: 40),
-                              itemCount: tickets.length > 5
-                                  ? 5
-                                  : tickets.length,
+                              itemCount:
+                                  filteredTickets.length >
+                                      (isFiltering ? 10 : 5)
+                                  ? (isFiltering ? 10 : 5)
+                                  : filteredTickets.length,
                               itemBuilder: (context, index) {
                                 return _buildRecentTicketCard(
                                   context,
-                                  tickets[index],
+                                  filteredTickets[index],
                                 );
                               },
                             ),
@@ -526,6 +582,105 @@ class SupervisorHomeScreen extends StatelessWidget {
     );
   }
 
+  String _categoryOf(Map<String, dynamic> t) {
+    final c = (t['category'] ?? '').toString();
+    return const ['Network', 'Hardware', 'Software'].contains(c) ? c : 'Other';
+  }
+
+  Widget _buildCategoryOverview(
+    List<String> categoryKeys,
+    Map<String, int> categoryTotals,
+  ) {
+    const blue = Color(0xFF005CAB);
+    const icons = {
+      'Network': Icons.wifi_rounded,
+      'Hardware': Icons.router_outlined,
+      'Software': Icons.settings_applications_outlined,
+      'Other': Icons.more_horiz_rounded,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tickets by Category',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF333333),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap a card to filter the ticket list below.',
+            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: categoryKeys.map((cat) {
+              final selected = _selectedCategory == cat;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: cat == categoryKeys.last ? 0 : 8,
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => setState(
+                      () => _selectedCategory = selected ? null : cat,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: selected ? blue.withOpacity(0.08) : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: selected ? blue : Colors.transparent,
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(icons[cat], color: blue, size: 22),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${categoryTotals[cat]}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF333333),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cat,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
   // --- Helper UI Methods ---
 
   Widget _buildKPICard(String title, int count, IconData icon, Color color) {
@@ -786,6 +941,13 @@ class SupervisorHomeScreen extends StatelessWidget {
       if (createdAt is! Timestamp) continue;
 
       final date = createdAt.toDate();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final startOfWeek = today.subtract(
+        Duration(days: now.weekday - 1),
+      ); // this Monday
+      if (date.isBefore(startOfWeek)) continue;
+
       switch (date.weekday) {
         case DateTime.monday:
           counts['Mon'] = counts['Mon']! + 1;

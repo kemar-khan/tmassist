@@ -140,8 +140,6 @@ class _TechnicianPerformanceScreenState
                     int total = 0;
                     int totalReportsSubmitted = 0;
                     int totalResolvableTickets = 0;
-                    double totalResolutionHours = 0;
-                    int resolutionCount = 0;
 
                     for (var ticket in ticketDocs) {
                       final t = ticket.data() as Map<String, dynamic>;
@@ -157,23 +155,7 @@ class _TechnicianPerformanceScreenState
                         if (status == 'RESOLVED') resolved++;
                         if (status == 'CLOSED') closed++;
 
-                        // Calculate resolution time
                         if (status == 'RESOLVED' || status == 'CLOSED') {
-                          final createdAt = t['createdAt'];
-                          final updatedAt = t['updatedAt'];
-
-                          if (createdAt is Timestamp &&
-                              updatedAt is Timestamp) {
-                            final created = createdAt.toDate();
-                            final updated = updatedAt.toDate();
-                            final diff = updated.difference(created).inMinutes;
-                            if (diff > 0) {
-                              totalResolutionHours += diff / 60;
-                              resolutionCount++;
-                            }
-                          }
-
-                          // Check report submission
                           totalResolvableTickets++;
                           if (submittedTicketIds.contains(ticket.id)) {
                             totalReportsSubmitted++;
@@ -195,10 +177,6 @@ class _TechnicianPerformanceScreenState
                         ? (resolved + closed) / total * 100
                         : 0.0;
 
-                    final avgResolutionHours = resolutionCount > 0
-                        ? totalResolutionHours / resolutionCount
-                        : 0.0;
-
                     technicians.add({
                       'id': techId,
                       'name': name,
@@ -209,7 +187,6 @@ class _TechnicianPerformanceScreenState
                       'closed': closed,
                       'total': total,
                       'completionRate': completionRate,
-                      'avgResolutionHours': avgResolutionHours,
                       'reportsSubmitted': totalReportsSubmitted,
                       'resolvableTickets': totalResolvableTickets,
                     });
@@ -360,8 +337,6 @@ class _TechnicianPerformanceScreenState
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _kpiItem("Total Techs", technicians.length.toString()),
-          _verticalDivider(),
-          _kpiItem("Active Now", weeklyActivity.length.toString()),
           _verticalDivider(),
           _kpiItem("Resolved", totalResolved.toString()),
         ],
@@ -912,92 +887,33 @@ class _TechnicianPerformanceScreenState
           // New metrics row
           Row(
             children: [
-              // Avg Resolution Time
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          size: 14,
-                          color: Colors.grey[500],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Avg Resolution',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      avgTimeLabel,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        color: avgHours == 0
-                            ? Colors.grey
-                            : avgHours <= 4
-                            ? Colors.green
-                            : avgHours <= 8
-                            ? _accentOrange
-                            : Colors.red,
-                      ),
-                    ),
-                  ],
+              Icon(
+                Icons.description_outlined,
+                size: 16,
+                color: Colors.grey[500],
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Reports submitted (of completed tickets)',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-
-              // Vertical divider
-              Container(height: 40, width: 1, color: Colors.grey[200]),
-
-              const SizedBox(width: 16),
-
-              // Report Submission Rate
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.description_outlined,
-                          size: 14,
-                          color: Colors.grey[500],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Reports Submitted',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      resolvableTickets == 0
-                          ? 'N/A'
-                          : '$reportsSubmitted / $resolvableTickets',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        color: resolvableTickets == 0
-                            ? Colors.grey
-                            : reportsSubmitted == resolvableTickets
-                            ? Colors.green
-                            : _accentOrange,
-                      ),
-                    ),
-                  ],
+              const Spacer(),
+              Text(
+                resolvableTickets == 0
+                    ? 'N/A'
+                    : '$reportsSubmitted / $resolvableTickets',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: resolvableTickets == 0
+                      ? Colors.grey
+                      : reportsSubmitted == resolvableTickets
+                      ? Colors.green
+                      : _accentOrange,
                 ),
               ),
             ],

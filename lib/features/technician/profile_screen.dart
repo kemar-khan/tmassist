@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/service_areas.dart';
 
 class TechnicianProfileScreen extends StatelessWidget {
   const TechnicianProfileScreen({super.key});
@@ -51,6 +52,7 @@ class TechnicianProfileScreen extends StatelessWidget {
             .toString();
         final specialization =
             (data?['specialization'] ?? 'Fiber Optics / Broadband').toString();
+        final coverageAreas = List<String>.from(data?['coverageAreas'] ?? []);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),
@@ -148,6 +150,7 @@ class TechnicianProfileScreen extends StatelessWidget {
                         'Specialization',
                         specialization,
                       ),
+                      _buildCoverageAreasCard(firebaseUser.uid, coverageAreas),
 
                       const SizedBox(height: 32),
 
@@ -242,6 +245,148 @@ class TechnicianProfileScreen extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoverageAreasCard(String uid, List<String> coverageAreas) {
+    final areas = ServiceAreas.all.where((a) => a != 'Other').toList();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row, same style as _buildProfileItem
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF005CAB).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.map_outlined,
+                  color: Color(0xFF005CAB),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Coverage Areas',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      coverageAreas.isEmpty
+                          ? 'No Areas Assigned'
+                          : '${coverageAreas.length} area${coverageAreas.length == 1 ? '' : 's'} assigned',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF333333),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(height: 1, color: Colors.grey[200]),
+          const SizedBox(height: 16),
+
+          // Area chips
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 3.4,
+            children: areas.map((area) {
+              final selected = coverageAreas.contains(area);
+              return InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () async {
+                  final updated = [...coverageAreas];
+                  if (selected) {
+                    updated.remove(area);
+                  } else {
+                    updated.add(area);
+                  }
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .update({'coverageAreas': updated});
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected ? const Color(0xFF005CAB) : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xFF005CAB)
+                          : Colors.grey[300]!,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.add_circle_outline_rounded,
+                        size: 16,
+                        color: selected ? Colors.white : Colors.grey[500],
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        area,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: selected
+                              ? Colors.white
+                              : const Color(0xFF333333),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Tap an area to add or remove it. New tickets in these areas are assigned to you first.',
+            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
           ),
         ],
       ),
