@@ -406,6 +406,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     final status = (data['status'] ?? '').toString().toLowerCase();
     final isInProgress = status == 'in_progress';
     final isResolved = status == 'resolved';
+    final isClosed = status == 'closed';
 
     final checklistDone = List<bool>.from(
       (data['checklistDone'] ?? []).map((e) => e == true),
@@ -435,7 +436,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             icon: Icons.summarize_rounded,
             label: "REPORT",
             color: const Color(0xFF005CAB),
-            onPressed: isInProgress && isChecklistDone || isResolved
+            onPressed: isInProgress && isChecklistDone || isResolved || isClosed
                 ? () => Navigator.pushNamed(
                     context,
                     '/tech/report',

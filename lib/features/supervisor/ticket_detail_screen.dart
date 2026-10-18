@@ -5,7 +5,10 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../core/services/report_service.dart';
 import '../../core/services/report_pdf_service.dart';
-import '../../core/services/cloudinary_service.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:signature/signature.dart';
 
 class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -23,6 +26,12 @@ class _SupervisorTicketDetailScreenState
   final ReportService _reportService = ReportService();
   final TextEditingController _commentController = TextEditingController();
   bool _isSavingComment = false;
+  final SignatureController _sigController = SignatureController(
+    penStrokeWidth: 2.5,
+    penColor: Colors.black,
+    exportBackgroundColor: Colors.white,
+  );
+  bool _isSigning = false;
 
   @override
   void dispose() {
@@ -30,37 +39,71 @@ class _SupervisorTicketDetailScreenState
     super.dispose();
   }
 
-  Future<void> _handleCloseTicket() async {
-    setState(() => _isUpdating = true);
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('tickets')
-          .doc(widget.ticketId)
-          .update({
-            'status': 'CLOSED',
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      if (!mounted) return;
-
-      setState(() => _isUpdating = false);
+  Future<void> _handleSignOff() async {
+    final comment = _commentController.text.trim();
+    if (comment.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Ticket closed successfully"),
+          content: Text('Add a comment before signing'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (_sigController.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in the box'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSigning = true);
+    try {
+      final bytes = await _sigController.toPngBytes();
+      if (bytes == null) throw Exception('Could not read signature');
+
+      final db = FirebaseFirestore.instance;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      var name = 'Supervisor';
+      if (uid != null) {
+        final u = await db.collection('users').doc(uid).get();
+        name = (u.data()?['fullName'] ?? name).toString();
+      }
+
+      final batch = db.batch();
+      batch.update(db.collection('reports').doc(widget.ticketId), {
+        'supervisorComments': comment,
+        'supervisorSignature': base64Encode(bytes),
+        'supervisorName': name,
+        'signedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.update(db.collection('tickets').doc(widget.ticketId), {
+        'status': 'CLOSED',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report signed and ticket closed'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
-
-      setState(() => _isUpdating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Failed to close ticket: $e"),
+          content: Text('Sign-off failed: $e'),
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (mounted) setState(() => _isSigning = false);
     }
   }
 
@@ -172,12 +215,10 @@ class _SupervisorTicketDetailScreenState
                     },
                   )
                 else if (status == 'RESOLVED')
-                  _buildActionCard(
-                    title: "Ticket Resolved by Technician",
-                    buttonLabel: "CLOSE TICKET",
-                    icon: Icons.check_circle_outline,
-                    color: Colors.green,
-                    onPressed: _isUpdating ? null : _handleCloseTicket,
+                  _buildInfoStatusCard(
+                    "Resolved. Review the report and sign off to close it.",
+                    Icons.rate_review_outlined,
+                    Colors.green,
                   )
                 else if (status == 'CLOSED')
                   _buildInfoStatusCard(
@@ -308,7 +349,14 @@ class _SupervisorTicketDetailScreenState
                         _buildSectionTitle('Service Report'),
                         _buildReportViewCard(report),
                         const SizedBox(height: 12),
-                        _buildSupervisorCommentCard(report),
+                        _buildSupervisorCommentCard(
+                          report,
+                          locked: (report['supervisorSignature'] ?? '')
+                              .toString()
+                              .isNotEmpty,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSignatureCard(report, status),
                         const SizedBox(height: 12),
                         ElevatedButton.icon(
                           onPressed: () async {
@@ -902,9 +950,56 @@ class _SupervisorTicketDetailScreenState
               ),
             ),
           ],
+          // Older reports have no technician signature: show nothing.
+          if (_decodeSignature(
+                (report['technicianSignature'] ?? '').toString(),
+              ) !=
+              null) ...[
+            _buildDivider(),
+            const Padding(
+              padding: EdgeInsets.only(top: 8, bottom: 6),
+              child: Text(
+                'Technician Sign-off',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Container(
+              height: 100,
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Image.memory(
+                _decodeSignature(report['technicianSignature'].toString())!,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${report['technicianName'] ?? 'Technician'}  •  '
+              '${_formatTimestamp(report['technicianSignedAt'] is Timestamp ? report['technicianSignedAt'] as Timestamp : null)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Returns null for a missing or invalid base64 signature.
+  Uint8List? _decodeSignature(String b64) {
+    if (b64.isEmpty) return null;
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _buildReportRow(String label, String value, {required bool isAi}) {
@@ -960,7 +1055,10 @@ class _SupervisorTicketDetailScreenState
     );
   }
 
-  Widget _buildSupervisorCommentCard(Map<String, dynamic> report) {
+  Widget _buildSupervisorCommentCard(
+    Map<String, dynamic> report, {
+    bool locked = false,
+  }) {
     final existingComment = (report['supervisorComments'] ?? '').toString();
 
     if (_commentController.text.isEmpty && existingComment.isNotEmpty) {
@@ -992,6 +1090,7 @@ class _SupervisorTicketDetailScreenState
           const SizedBox(height: 12),
           TextField(
             controller: _commentController,
+            readOnly: locked,
             maxLines: 4,
             decoration: InputDecoration(
               hintText: 'Add your comments or feedback on this report...',
@@ -1015,37 +1114,169 @@ class _SupervisorTicketDetailScreenState
             ),
             style: TextStyle(fontSize: 13, color: Colors.grey[800]),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isSavingComment ? null : _handleSaveComment,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF005CAB),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          if (!locked) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSavingComment ? null : _handleSaveComment,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF005CAB),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-              ),
-              child: _isSavingComment
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
+                child: _isSavingComment
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Save Comment',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                    )
-                  : const Text(
-                      'Save Comment',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildSignatureCard(Map<String, dynamic> report, String ticketStatus) {
+    final sigB64 = (report['supervisorSignature'] ?? '').toString();
+
+    // Already signed: read-only
+    if (sigB64.isNotEmpty) {
+      final signedAt = report['signedAt'] as Timestamp?;
+      return _buildCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.verified_outlined, color: Colors.green, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Supervisor Sign-off',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              height: 100,
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Image.memory(base64Decode(sigB64), fit: BoxFit.contain),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${report['supervisorName'] ?? 'Supervisor'}  •  ${_formatTimestamp(signedAt)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Resolved and not yet signed: show the pad
+    if (ticketStatus == 'RESOLVED') {
+      return _buildCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.draw_outlined, color: Color(0xFF005CAB), size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Sign Off & Close',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Sign below to approve this report. The ticket will be closed.',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
+            const SizedBox(height: 12),
+            // The empty drag handlers stop the page scrolling while signing
+            GestureDetector(
+              onVerticalDragUpdate: (_) {},
+              onHorizontalDragUpdate: (_) {},
+              child: Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Signature(
+                    controller: _sigController,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isSigning ? null : () => _sigController.clear(),
+                    child: const Text('Clear'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _isSigning ? null : _handleSignOff,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6600),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: _isSigning
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text('SIGN OFF & CLOSE'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Closed before sign-off existed
+    if (ticketStatus == 'CLOSED') {
+      return _buildInfoStatusCard(
+        'Closed without sign-off',
+        Icons.info_outline,
+        Colors.grey,
+      );
+    }
+    return const SizedBox();
   }
 
   String _formatTimestamp(Timestamp? timestamp) {

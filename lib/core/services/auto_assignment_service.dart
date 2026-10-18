@@ -23,7 +23,7 @@ class AutoAssignmentService {
 
       final resolvedTicketsSnap = await _firestore
           .collection('tickets')
-          .where('status', isEqualTo: 'RESOLVED')
+          .where('status', whereIn: ['RESOLVED', 'CLOSED'])
           .get();
 
       final allTechs = techSnap.docs;

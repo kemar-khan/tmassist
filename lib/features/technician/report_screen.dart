@@ -1,8 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:signature/signature.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/cloudinary_service.dart';
 import '../../core/services/report_pdf_service.dart';
@@ -19,6 +22,12 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   final ReportService _reportService = ReportService();
   final TextEditingController _techNotesController = TextEditingController();
+  // Created once and disposed in dispose(); never rebuilt with the widget.
+  final SignatureController _sigController = SignatureController(
+    penStrokeWidth: 2.5,
+    penColor: Colors.black,
+    exportBackgroundColor: Colors.white,
+  );
 
   bool _isGenerating = false;
   bool _isSubmitting = false;
@@ -199,9 +208,31 @@ class _ReportScreenState extends State<ReportScreen> {
   Future<void> _submitReport() async {
     if (!_reportGenerated) return;
 
+    if (_sigController.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign before submitting'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
+      final signatureBytes = await _sigController.toPngBytes();
+      if (signatureBytes == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read signature. Please sign again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       final data = _ticketData!;
 
       await _reportService.saveReport(
@@ -220,6 +251,8 @@ class _ReportScreenState extends State<ReportScreen> {
           'technicianNotes': _techNotesController.text.trim(),
           'supervisorComments': '',
           'proofUrl': _proofUrl,
+          'technicianSignature': base64Encode(signatureBytes),
+          'technicianSignedAt': FieldValue.serverTimestamp(),
         },
       );
 
@@ -394,6 +427,17 @@ class _ReportScreenState extends State<ReportScreen> {
                   _buildProofSection(isSubmitted),
                   const SizedBox(height: 12),
 
+                  // Technician sign-off: pad before submit, read-only after.
+                  // Old reports without a signature show nothing.
+                  if (isSubmitted
+                      ? (_existingReport!['technicianSignature'] ?? '')
+                            .toString()
+                            .isNotEmpty
+                      : _reportGenerated) ...[
+                    _buildTechnicianSignatureCard(isSubmitted),
+                    const SizedBox(height: 12),
+                  ],
+
                   if (isSubmitted &&
                       (_existingReport!['supervisorComments'] ?? '')
                           .toString()
@@ -403,6 +447,20 @@ class _ReportScreenState extends State<ReportScreen> {
                       content: _existingReport!['supervisorComments'] ?? '',
                       icon: Icons.supervisor_account_outlined,
                     ),
+
+                  if (isSubmitted &&
+                      (_existingReport!['supervisorSignature'] ?? '')
+                          .toString()
+                          .isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildReportSection(
+                      title: 'Supervisor Sign-off',
+                      content:
+                          'Signed by ${_existingReport!['supervisorName'] ?? 'Supervisor'} on '
+                          '${_formatTimestamp(_existingReport!['signedAt'] as Timestamp?)}',
+                      icon: Icons.verified_outlined,
+                    ),
+                  ],
 
                   const SizedBox(height: 24),
 
@@ -642,6 +700,123 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  Uint8List? _decodeSignature(String b64) {
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildTechnicianSignatureCard(bool isSubmitted) {
+    final storedSig = (_existingReport?['technicianSignature'] ?? '')
+        .toString();
+    final storedBytes = isSubmitted ? _decodeSignature(storedSig) : null;
+    final signedAtRaw = _existingReport?['technicianSignedAt'];
+    final signedAt = signedAtRaw is Timestamp ? signedAtRaw : null;
+    final signerName = (_existingReport?['technicianName'] ?? 'Technician')
+        .toString();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isSubmitted ? Icons.verified_outlined : Icons.draw_outlined,
+                size: 18,
+                color: isSubmitted ? Colors.green : const Color(0xFF005CAB),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Technician Sign-off',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF333333),
+                  ),
+                ),
+              ),
+              if (!isSubmitted)
+                Text(
+                  'Required',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (isSubmitted) ...[
+            Container(
+              height: 100,
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: storedBytes == null
+                  ? const Center(child: Icon(Icons.broken_image, size: 36))
+                  : Image.memory(storedBytes, fit: BoxFit.contain),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Signed by $signerName on ${_formatTimestamp(signedAt)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ] else ...[
+            Text(
+              'Sign below to confirm this report before submitting.',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
+            const SizedBox(height: 12),
+            // The empty drag handlers stop the page scrolling while signing
+            GestureDetector(
+              onVerticalDragUpdate: (_) {},
+              onHorizontalDragUpdate: (_) {},
+              child: Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Signature(
+                    controller: _sigController,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _isSubmitting ? null : () => _sigController.clear(),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Clear'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildProofSection(bool isSubmitted) {
     final hasProof = _proofUrl.isNotEmpty;
     final isPdf = _proofUrl.toLowerCase().endsWith('.pdf');
@@ -820,6 +995,7 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void dispose() {
     _techNotesController.dispose();
+    _sigController.dispose();
     super.dispose();
   }
 }

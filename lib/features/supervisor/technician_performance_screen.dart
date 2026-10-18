@@ -132,6 +132,9 @@ class _TechnicianPerformanceScreenState
                     final name = data['fullName'] ?? "Technician";
                     final specialization =
                         data['specialization'] ?? "Generalist";
+                    final coverageAreas = List<String>.from(
+                      data['coverageAreas'] ?? [],
+                    );
 
                     int assigned = 0;
                     int inProgress = 0;
@@ -181,6 +184,7 @@ class _TechnicianPerformanceScreenState
                       'id': techId,
                       'name': name,
                       'specialization': specialization,
+                      'coverageAreas': coverageAreas,
                       'assigned': assigned,
                       'inProgress': inProgress,
                       'resolved': resolved,
@@ -725,6 +729,7 @@ class _TechnicianPerformanceScreenState
     final reportsSubmitted = (tech['reportsSubmitted'] as int?) ?? 0;
     final resolvableTickets = (tech['resolvableTickets'] as int?) ?? 0;
     final closed = (tech['closed'] as int?) ?? 0;
+    final coverageAreas = List<String>.from(tech['coverageAreas'] ?? []);
 
     String avgTimeLabel;
     if (avgHours == 0) {
@@ -875,6 +880,62 @@ class _TechnicianPerformanceScreenState
                 closed,
                 Colors.grey[100]!,
                 Colors.grey[700]!,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Coverage areas
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Nudge the icon down so it lines up with the middle of the
+              // first row of area chips (chips are taller than the icon).
+              Padding(
+                padding: EdgeInsets.only(top: coverageAreas.isEmpty ? 0 : 3),
+                child: Icon(
+                  Icons.map_outlined,
+                  size: 16,
+                  color: Colors.grey[500],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: coverageAreas.isEmpty
+                    ? Text(
+                        'No coverage areas set',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red[300],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      )
+                    : Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: coverageAreas
+                            .map(
+                              (a) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _primaryBlue.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  a,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: _primaryBlue,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
               ),
             ],
           ),

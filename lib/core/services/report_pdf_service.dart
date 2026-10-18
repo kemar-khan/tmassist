@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'dart:convert';
 
 class ReportPdfService {
   static final _blue = PdfColor.fromHex('005CAB');
@@ -10,7 +11,8 @@ class ReportPdfService {
 
   /// [report] keys used: category, customerName, technicianName, address,
   /// createdAt, submittedAt, issueSummary, stepsTaken, resolutionSummary,
-  /// technicianNotes, supervisorComments, proofUrl
+  /// technicianNotes, supervisorComments, proofUrl, technicianSignature,
+  /// technicianSignedAt, supervisorSignature, supervisorName, signedAt
   static Future<void> export({
     required String ticketId,
     required Map<String, dynamic> report,
@@ -27,6 +29,26 @@ class ReportPdfService {
         proofImage = await networkImage(proofUrl);
       } catch (_) {
         proofImage = null;
+      }
+    }
+
+    pw.ImageProvider? sigImage;
+    final sigB64 = (report['supervisorSignature'] ?? '').toString();
+    if (sigB64.isNotEmpty) {
+      try {
+        sigImage = pw.MemoryImage(base64Decode(sigB64));
+      } catch (_) {
+        sigImage = null;
+      }
+    }
+
+    pw.ImageProvider? techSigImage;
+    final techSigB64 = (report['technicianSignature'] ?? '').toString();
+    if (techSigB64.isNotEmpty) {
+      try {
+        techSigImage = pw.MemoryImage(base64Decode(techSigB64));
+      } catch (_) {
+        techSigImage = null;
       }
     }
 
@@ -267,11 +289,23 @@ class ReportPdfService {
                 child: _signBox(
                   'Prepared by (Technician)',
                   field('technicianName') == '-' ? '' : field('technicianName'),
-                  reportDate,
+                  report['technicianSignedAt'] is Timestamp
+                      ? _date(report['technicianSignedAt'] as Timestamp)
+                      : reportDate,
+                  signature: techSigImage,
                 ),
               ),
               pw.SizedBox(width: 24),
-              pw.Expanded(child: _signBox('Reviewed by (Supervisor)', '', '')),
+              pw.Expanded(
+                child: _signBox(
+                  'Reviewed by (Supervisor)',
+                  (report['supervisorName'] ?? '').toString(),
+                  report['signedAt'] is Timestamp
+                      ? _date(report['signedAt'] as Timestamp)
+                      : '',
+                  signature: sigImage,
+                ),
+              ),
             ],
           ),
         ],
@@ -337,14 +371,26 @@ class ReportPdfService {
     ),
   );
 
-  static pw.Widget _signBox(String role, String name, String date) => pw.Column(
+  static pw.Widget _signBox(
+    String role,
+    String name,
+    String date, {
+    pw.ImageProvider? signature,
+  }) => pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
       pw.Text(
         role,
         style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
       ),
-      pw.SizedBox(height: 36),
+      pw.SizedBox(height: 6),
+      pw.Container(
+        height: 40,
+        alignment: pw.Alignment.bottomLeft,
+        child: signature != null
+            ? pw.Image(signature, fit: pw.BoxFit.contain)
+            : pw.SizedBox(),
+      ),
       pw.Container(height: 0.8, color: PdfColors.grey700),
       pw.SizedBox(height: 4),
       pw.Text(
