@@ -13,8 +13,10 @@ class TicketDetailScreen extends StatefulWidget {
 class _TicketDetailScreenState extends State<TicketDetailScreen> {
   bool _isUpdating = false;
 
-  Future<void> _handleStatusChange(String? newStatus) async {
-    if (newStatus == null) return;
+  /// ASSIGNED -> IN_PROGRESS. Resolving a ticket is done only by submitting a
+  /// report (ReportService.saveReport), never from this screen.
+  Future<void> _startJob() async {
+    const newStatus = 'IN_PROGRESS';
 
     setState(() => _isUpdating = true);
 
@@ -286,9 +288,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isUpdating
-                    ? null
-                    : () => _handleStatusChange('IN_PROGRESS'),
+                onPressed: _isUpdating ? null : _startJob,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF6600),
                   foregroundColor: Colors.white,
@@ -309,29 +309,29 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               ),
             )
           else if (currentStatus == 'IN_PROGRESS')
-            SizedBox(
+            Container(
               width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isUpdating
-                    ? null
-                    : () => _handleStatusChange('RESOLVED'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF005CAB),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.grey, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Complete the checklist, then submit your report to resolve this ticket.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'MARK AS RESOLVED',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    letterSpacing: 0.5,
-                  ),
-                ),
+                ],
               ),
             )
           else if (currentStatus == 'RESOLVED')
