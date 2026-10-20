@@ -12,102 +12,160 @@ class ChecklistService {
       apiKey: AppConstants.geminiApiKey,
     );
   }
+  // Short terms (4 chars or fewer) match whole words; longer terms use contains
+  bool _has(String text, List<String> terms) {
+    for (final t in terms) {
+      if (t.length <= 4) {
+        if (RegExp('\\b${RegExp.escape(t)}(s|ed|ing|ly)?\\b').hasMatch(text)) {
+          return true;
+        }
+      } else if (text.contains(t)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-  // --- Step 4: Issue Classification via Keyword Detection ---
   String _detectSubcategory(String category, String title, String description) {
     final text = '$title $description'.toLowerCase();
 
     switch (category.toLowerCase()) {
       case 'network':
-        if (text.contains('los') ||
-            text.contains('fiber') ||
-            text.contains('fibre') ||
-            text.contains('no internet') ||
-            text.contains('red light') ||
-            text.contains('no connection') ||
-            text.contains('signal loss') ||
-            text.contains('completely down') ||
-            text.contains('total outage'))
+        if (_has(text, [
+          'auth led',
+          'auth light',
+          'not authenticated',
+          'onu password',
+        ]))
+          return 'onu_auth_failure';
+
+        if (_has(text, [
+          'los',
+          'fiber',
+          'fibre',
+          'no internet',
+          'red light',
+          'no connection',
+          'signal loss',
+          'completely down',
+          'total outage',
+          'link led',
+          'no signal',
+        ]))
           return 'fiber_loss';
 
-        if (text.contains('wifi') ||
-            text.contains('wi-fi') ||
-            text.contains('wireless') ||
-            text.contains('weak signal') ||
-            text.contains('cannot connect') ||
-            text.contains('no wifi'))
+        if (_has(text, [
+          'wifi',
+          'wi-fi',
+          'wireless',
+          'weak signal',
+          'cannot connect',
+          'no wifi',
+        ]))
           return 'wifi_issue';
 
-        if (text.contains('slow') ||
-            text.contains('speed') ||
-            text.contains('buffering') ||
-            text.contains('mbps') ||
-            text.contains('lagging') ||
-            text.contains('loading slowly') ||
-            text.contains('low speed'))
+        if (_has(text, [
+          'slow',
+          'slower',
+          'speed',
+          'buffering',
+          'mbps',
+          'lagging',
+          'low speed',
+        ]))
           return 'speed_degradation';
 
-        if (text.contains('disconnect') ||
-            text.contains('dropping') ||
-            text.contains('unstable') ||
-            text.contains('intermittent') ||
-            text.contains('keeps cutting') ||
-            text.contains('on and off') ||
-            text.contains('random'))
+        if (_has(text, [
+          'disconnect',
+          'dropping',
+          'unstable',
+          'intermittent',
+          'keeps cutting',
+          'on and off',
+          'random',
+        ]))
           return 'intermittent';
 
         return 'fiber_loss'; // default network
 
       case 'hardware':
-        if (text.contains('ont') ||
-            text.contains('no light') ||
-            text.contains('no power') ||
-            text.contains('dead') ||
-            text.contains('not turning on') ||
-            text.contains('power'))
+        if (_has(text, [
+          'ont',
+          'onu',
+          'no light',
+          'no power',
+          'power led',
+          'power adapter',
+          'dead',
+          'not turning on',
+        ]))
           return 'ont_failure';
 
-        if (text.contains('router') ||
-            text.contains('lan') ||
-            text.contains('ethernet') ||
-            text.contains('admin page') ||
-            text.contains('cannot access'))
+        if (_has(text, [
+          'router',
+          'lan',
+          'ethernet',
+          'admin page',
+          'cannot access',
+        ]))
           return 'router_failure';
 
-        if (text.contains('cable') ||
-            text.contains('port') ||
-            text.contains('loose') ||
-            text.contains('damaged') ||
-            text.contains('broken') ||
-            text.contains('connector'))
+        if (_has(text, [
+          'cable',
+          'port',
+          'loose',
+          'damaged',
+          'broken',
+          'connector',
+          'patch cord',
+          'bent',
+        ]))
           return 'cable_damage';
 
         return 'ont_failure'; // default hardware
 
       case 'software':
-        if (text.contains('password') ||
-            text.contains('pppoe') ||
-            text.contains('authentication') ||
-            text.contains('login') ||
-            text.contains('credential') ||
-            text.contains('username'))
+        if (_has(text, [
+          'voip',
+          'telephone',
+          'landline',
+          'dial tone',
+          'tel1',
+          'tel2',
+          'home phone',
+          'voice',
+        ]))
+          return 'voip_issue';
+
+        if (_has(text, [
+          'password',
+          'pppoe',
+          'authentication',
+          'login',
+          'credential',
+          'username',
+        ]))
           return 'pppoe_auth';
 
-        if (text.contains('vlan') ||
-            text.contains('iptv') ||
-            text.contains('hypptv') ||
-            text.contains('tv') ||
-            text.contains('setup') ||
-            text.contains('configuration') ||
-            text.contains('misconfigured'))
+        if (_has(text, [
+          'vlan',
+          'iptv',
+          'hypptv',
+          'tv',
+          'setup',
+          'configuration',
+          'misconfigured',
+        ]))
           return 'vlan_config';
 
-        if (text.contains('dns') ||
-            text.contains('website') ||
-            text.contains('browsing') ||
-            text.contains('cannot open') ||
-            text.contains('ping') ||
-            text.contains('domain'))
+        if (_has(text, [
+          'dns',
+          'website',
+          'browsing',
+          'cannot open',
+          'ping',
+          'domain',
+        ]))
           return 'dns_issue';
 
         return 'pppoe_auth'; // default software
@@ -125,35 +183,61 @@ class ChecklistService {
       // NETWORK SUBCATEGORIES
       case 'network_fiber_loss':
         return '''
-TM Fiber/GPON Signal Loss — Field Procedures:
+TM Unifi FTTH No Optical Signal — Field Procedures:
 
 Common Causes:
-- Physical fiber optic cable cut or bent beyond minimum bend radius
-- Dirty or damaged fiber connector end-face at ONT input
-- Failed optical splitter upstream in the distribution network
-- ONT hardware failure (optical module degraded)
-- Loose fiber patch cord at ONT or wall socket
+- Fibre patch cord or drop cable damaged, bent or disconnected
+- Dirty or damaged connector end-face
+- Fault in the passive section between OLT and customer (FDC, FDP, splitter)
+- ONU optical or power fault
 
 Required Tools:
-- Optical Power Meter (OPM) and light source
-- OTDR (Optical Time Domain Reflectometer)
-- Fiber inspection probe / USB microscope
-- IPA cleaning wipes and fiber cleaning kit
-- Spare fiber patch cord for swap test
+- Optical power meter (GPON, 1310/1490/1550 nm)
+- Visual fault locator
+- Fibre inspection scope and cleaning kit (99% isopropyl alcohol, lint-free wipes, one-click cleaner)
 
 Field Procedures:
-1. Confirm ONT LOS indicator — solid red LOS light = no optical signal received
-2. Check fiber patch cord from ONT to wall socket — look for sharp bends, kinks, or physical damage
-3. Re-seat fiber patch cord connectors at both ends firmly
-4. Use OPM to measure optical Rx power at ONT input (acceptable GPON range: -8 to -27 dBm)
-5. If power is absent or below -27 dBm, inspect fiber end-face with probe — clean with IPA wipe if dirty
-6. Swap patch cord with known-good spare — re-measure power after swap
-7. If still no signal, use OTDR from nearest access point to locate fiber break distance
-8. If break is outside customer premises, escalate to TM outside plant team with OTDR trace
+1. Check the ONU front panel: Power LED white, LINK LED white and stable
+2. If LINK is off, inspect the fibre from the fibre wall socket (FWS) to the ONU for bends, damage or loose connectors
+3. Re-seat both ends of the patch cord, inspect the end-face with the scope, clean if dirty
+4. Measure received power at the ONU with the power meter. ONU receiver sensitivity is -28 dBm (total allowable loss 28 dB)
+5. Use the visual fault locator to find a break or sharp bend along the cable
+6. Swap in a known-good patch cord and re-test
+7. If the fault is before the FWS (drop cable, FDP, FDC or splitter), escalate with the test readings
 
 Safety Notes:
-- Never look directly into a fiber end-face or active light source — risk of permanent eye injury
-- Power down ONT before cleaning or swapping fiber connectors
+- Never look into a fibre end-face or active light source
+- Follow ladder (1:4 ratio) and full body harness rules when working on pole-mounted DPs
+
+Source: TM Training Centre, Unifi FTTH module (ONU LED table, PON power budget, tools)
+''';
+
+      case 'network_onu_auth_failure':
+        return '''
+TM Unifi ONU Authentication Failure — Field Procedures:
+
+Common Causes:
+- ONU authentication password not configured or incorrect
+- ONU brand does not match the OLT
+- Service VLAN fault on ONU or OLT
+
+Required Tools:
+- Laptop with LAN cable
+- TM work order (contains the ONU authentication password)
+
+Field Procedures:
+1. Read the ONU LEDs: Power on, LINK white and stable, AUTH off means the ONU is not authenticated
+2. If LINK is also off, treat it as a fibre fault first
+3. Check that the ONU brand matches the OLT
+4. Reconfigure the ONU authentication password as given in the work order
+5. Reboot the ONU, then confirm AUTH and LINK are stable
+6. If LINK and AUTH are on but there is still no service, call the field technical centre to check the service VLAN on the ONU and OLT
+
+Safety Notes:
+- Do not share the authentication password outside TM systems
+- Use the credentials in the TM work instruction
+
+Source: TM Training Centre, Unifi FTTH module (ONU normal working condition, fault test method)
 ''';
 
       case 'network_wifi_issue':
@@ -189,97 +273,103 @@ Safety Notes:
 
       case 'network_speed_degradation':
         return '''
-TM Internet Speed Degradation — Field Procedures:
+TM Unifi Slow Speed — Field Procedures:
+
+TM service standards (user to nearest node or BRAS):
+- Throughput at least 90% of the subscribed speed
+- Latency: local up to 85 ms, international up to 350 ms
+- Packet loss up to 1%
+- Jitter: lower is better
 
 Common Causes:
-- Optical signal level weak but above minimum threshold (marginal link)
-- Router CPU overloaded from too many connected devices
-- ISP-side port throughput issue
-- DNS server slow causing perceived slowness
-- QoS misconfiguration throttling specific traffic
+- Weak or degraded optical link (dirty or damaged connector)
+- Many users sharing one PON port (max 64 users per port)
+- Poor cable between ONU LAN1 and the premise gateway (PG)
+- Wi-Fi limitations at the customer premise
 
 Required Tools:
-- Optical Power Meter (OPM)
-- Laptop for speed test via wired connection
-- Router admin panel access (192.168.1.1)
+- Laptop with LAN cable
+- TM Internet Experience Measurement Tool (verify.tm.net.my) or a speed test
+- Optical power meter, fibre inspection scope and cleaning kit
 
 Field Procedures:
-1. Run speed test via wired LAN connection — eliminates WiFi as the cause
-2. Run speed test via WiFi — compare with wired result
-3. Measure optical Rx power with OPM — weak signal below -24 dBm causes speed issues
-4. Log into router admin — check active connections and bandwidth usage per device
-5. Check for background applications consuming bandwidth (torrents, cloud backups)
-6. Change DNS to 8.8.8.8 and 1.1.1.1 — test browsing speed after change
-7. Check router QoS settings — disable or reconfigure if throttling traffic
-8. If wired speed still below plan, escalate to TM NOC with speed test results and OPM reading
+1. Confirm the customer's subscribed speed
+2. Run the speed test wired from a PG LAN port and record download, upload, ping and jitter
+3. Run the same test over Wi-Fi and compare (general practice)
+4. Compare results with the TM standard: at least 90% of plan, latency up to 85 ms, packet loss up to 1%
+5. Confirm ONU LINK and AUTH are stable and LAN1 LED is white (ONU to PG link OK)
+6. Inspect and clean the fibre connector, check the patch cord for bends, measure received power (sensitivity -28 dBm)
+7. Swap the LAN cable between ONU LAN1 and PG WAN with a known-good one (general practice)
+8. If wired speed is still below 90% with a healthy optical link, escalate with the test readings
 
 Safety Notes:
-- Run speed test at off-peak hours for baseline comparison
-- Document speed test results with timestamps for escalation
+- Never look into a fibre end-face
+- Record test results with time for escalation
+
+Source: TM Training Centre, Unifi FTTH module (QoS internet speed slides, PON technology)
 ''';
 
       case 'network_intermittent':
         return '''
-TM Intermittent Disconnection — Field Procedures:
+TM Unifi Intermittent Disconnection — Field Procedures:
 
 Common Causes:
-- Marginal optical signal causing link to drop under load
-- Faulty or loose fiber patch cord causing micro-interruptions
-- Router overheating causing periodic resets
-- PPPoE session timeout misconfiguration
-- Upstream port instability at TM exchange
+- Loose or dirty fibre connector causing micro-interruptions
+- Patch cord bent or crushed
+- Unstable ONU power (adapter or power port)
+- Loose LAN cable between ONU and PG
+- Marginal optical power
 
 Required Tools:
-- Optical Power Meter (OPM)
+- Optical power meter, fibre inspection scope and cleaning kit
 - Laptop for continuous ping test
-- Router admin panel access for log review
 
 Field Procedures:
-1. Run continuous ping test (ping -t 8.8.8.8) — observe drop pattern (consistent vs random)
-2. Check router system log — look for PPPoE disconnection events with timestamps
-3. Measure optical Rx power with OPM — note if reading is near -27 dBm threshold
-4. Physically check fiber patch cord — re-seat both connectors, look for intermittent contact
-5. Check router temperature — if hot, power off 10 minutes; reposition for ventilation
-6. Check PPPoE keepalive settings in router admin — ensure session timeout is correct
-7. If drops follow consistent time pattern, suspect upstream port — escalate to TM NOC with ping log
-8. Replace fiber patch cord as preventive measure if no other cause found
+1. Watch the ONU LEDs during a drop: LINK, AUTH, LAN1 and VOIP
+2. If LINK drops, it is a fibre-side fault: re-seat, inspect and clean both connectors, check for bends
+3. If only LAN1 or the PG WAN drops, check the LAN cable and the PG
+4. Check the power adapter and power port (the deck lists changing the adapter or power port)
+5. Measure received power with the power meter (sensitivity -28 dBm)
+6. Run a continuous ping for about 30 minutes and compare against the TM standard: packet loss up to 1%, latency up to 85 ms (general practice for the test)
+7. Replace the patch cord if no other cause is found
+8. If drops continue with a healthy link, escalate with the ping log and drop times
 
 Safety Notes:
-- Keep ping log running at least 30 minutes to capture drop pattern
-- Note exact times of disconnection for NOC escalation
+- Never look into a fibre end-face
+- Note the exact times of each disconnection
+
+Source: TM Training Centre, Unifi FTTH module (ONU LED table, QoS slides, ONU fault test method)
 ''';
 
       // HARDWARE SUBCATEGORIES
       case 'hardware_ont_failure':
         return '''
-TM ONT (Optical Network Terminal) Failure — Field Procedures:
+TM Unifi ONU (ONT) Hardware or Power Fault — Field Procedures:
 
 Common Causes:
-- Power adapter failure or wrong voltage output
-- ONT optical module degraded or failed
-- ONT firmware corruption causing boot loop
-- Physical damage to ONT unit
-- Power surge damage to ONT internal components
+- Power adapter or power port fault
+- ONU unit fault
+- ONU not authenticated with the OLT
 
 Required Tools:
-- Multimeter for power adapter voltage check
-- Spare ONT unit for swap test
-- Optical Power Meter to confirm signal present before blaming ONT
-- TM asset replacement form
+- Spare power adapter and spare ONU
+- Optical power meter
+- Laptop and TM work order (ONU authentication password)
 
 Field Procedures:
-1. Check ONT power LED — no LED indicates power supply issue not ONT failure
-2. Test power adapter output with multimeter — verify voltage matches ONT rated input (typically 12V DC)
-3. Replace power adapter with known-good unit — observe if ONT boots
-4. If ONT has power but LOS is red, measure optical signal with OPM to confirm signal is present
-5. If signal present (-8 to -27 dBm) but ONT still shows LOS, ONT optical module has failed
-6. Perform ONT unit swap with spare — configure with correct GPON SN and PLOAM password
-7. Confirm all services restore after swap — internet, IPTV, VoIP if applicable
-8. Record faulty ONT serial number and complete TM CPE replacement form
+1. Check the ONU Power LED (TM logo): white means power OK
+2. If the Power LED is off, check the ON/OFF switch and the power adapter input on the back panel
+3. Replace the power adapter, then the power port, then the ONU if it still has no power
+4. If power is on and LINK is off, check the fibre and the internal wiring
+5. If LINK is on and AUTH is off, reconfigure the ONU authentication password and check that the ONU brand matches the OLT
+6. If LINK and AUTH are on but there is no service, call the field technical centre to check the service VLAN
+7. After any ONU replacement, configure the authentication password and confirm all services (internet, voice, IPTV)
 
 Safety Notes:
-- Do not open ONT casing — sealed unit, TM policy violation
-- Power off ONT before disconnecting fiber patch cord
+- Switch off the ONU before disconnecting the fibre
+- Do not open the ONU casing (general practice)
+
+Source: TM Training Centre, Unifi FTTH module (ONU back and front panel, fault test method)
 ''';
 
       case 'hardware_router_failure':
@@ -316,35 +406,37 @@ Safety Notes:
 
       case 'hardware_cable_damage':
         return '''
-TM Cable and Port Inspection — Field Procedures:
+TM Unifi Fibre Cable and Connector Damage — Field Procedures:
 
 Common Causes:
-- LAN cable damaged by physical stress or pinching
-- RJ45 connector crimped incorrectly or clip broken
-- Wall socket RJ45 port damaged or corroded
-- Fiber patch cord bent sharply causing internal fracture
-- Router port physically damaged
+- Patch cord kinked, crushed or bent too sharply
+- Dirty or scratched connector end-face
+- Damaged fibre wall socket (FWS) or adaptor
+- Loose connector at the FWS or ONU
+- Damaged LAN cable between ONU and PG
 
 Required Tools:
-- RJ45 cable tester
-- Spare Cat5e/Cat6 patch cables
-- Spare fiber patch cord
-- Fiber inspection probe
-- Replacement RJ45 wall socket if needed
+- Fibre inspection scope
+- Cleaning kit (one-click cleaner, lint-free wipes, 99% isopropyl alcohol)
+- Spare patch cord and spare LAN cable
+- Optical power meter
 
 Field Procedures:
-1. Visual inspection of all cables — check full length for cuts, kinks, sharp bends
-2. Inspect all RJ45 connectors — check retaining clip, look for bent pins or corrosion
-3. Test LAN cable with cable tester — check all 8 pins for continuity
-4. Replace suspect LAN cable with known-good spare — test connectivity after swap
-5. Inspect fiber patch cord end-faces with probe — look for scratches or contamination
-6. Test each router LAN port individually — swap cable between ports to identify dead port
-7. Inspect wall socket RJ45 port — test with cable tester; replace if port fails
-8. Document all replaced components with part numbers for TM inventory records
+1. Check the ONU LINK LED. Off means no optical signal
+2. Inspect the patch cord from the FWS to the ONU for kinks, crush damage and tight bends
+3. Inspect both connector end-faces with the scope
+4. Clean with the one-click cleaner or lint-free wipes and isopropyl alcohol, then re-inspect
+5. Re-seat the connector at the FWS adaptor and at the ONU
+6. Inspect the FWS for damage and check the cable entry has proper routing and strain relief
+7. Replace the patch cord and confirm LINK turns on and received power is acceptable
+8. Check the LAN cable from ONU LAN1 to PG WAN and replace if damaged (general practice)
+9. If the damage is in the drop cable before the FWS, escalate
 
 Safety Notes:
-- Never force an RJ45 connector — inspect port for obstruction if resistance felt
-- Power off equipment before replacing wall sockets
+- Never look into a fibre end-face or active light source
+- Switch off the ONU before cleaning or swapping fibre
+
+Source: TM Training Centre, Unifi FTTH module (fibre cleaning kits, inspection scope, FWS, fibre types)
 ''';
 
       // SOFTWARE SUBCATEGORIES
@@ -380,32 +472,61 @@ Safety Notes:
 
       case 'software_vlan_config':
         return '''
-TM VLAN and Service Configuration — Field Procedures:
+TM Unifi Service and VLAN Configuration — Field Procedures:
+
+TM service VLANs (Unifi): Voice 400, Internet 500, IPTV 600, CCS 209.
 
 Common Causes:
-- Internet VLAN ID not set to 500
-- IPTV VLAN ID not set to 600
-- VLAN tagging disabled after factory reset
-- HyppTV subscription mismatch in TM middleware
-- Multicast settings disabled causing IPTV failure
+- Service VLAN not correct on the ONU or OLT
+- STB on the wrong PG port
+- ONU LAN1 to PG WAN link problem
 
 Required Tools:
-- Laptop for router admin panel access (192.168.1.1)
-- TM technician portal for subscription verification
+- Laptop for diagnostics
+- TM work order
 
 Field Procedures:
-1. Log into router admin — navigate to WAN/VLAN settings
-2. Confirm Internet WAN VLAN ID = 500 with PPPoE connection type
-3. Confirm IPTV WAN VLAN ID = 600 with multicast settings enabled
-4. Check IPTV port assignment — correct LAN port must be tagged for IPTV traffic (usually LAN4)
-5. Verify HyppTV STB is connected to correct router port
-6. Check HyppTV subscription status via TM portal — confirm IPTV package is active
-7. Reboot in sequence — router first, wait 2 minutes, then power STB
-8. If still fails, escalate to TM IPTV middleware team with STB MAC address
+1. Confirm which service is affected: internet, IPTV or voice
+2. Check the ONU LAN1 LED is white and that LAN1 connects to the PG WAN port
+3. Check the PG WAN and INTERNET LEDs
+4. Verify the VLAN for the affected service: internet 500, IPTV 600, voice 400
+5. For IPTV, confirm the STB is connected to PG LAN4
+6. For voice, confirm the phone is on ONU TEL1 or TEL2 and the VOIP LED is white
+7. Reboot in order: ONU, then PG, then STB (general practice)
+8. If LINK and AUTH are on but there is still no service, call the field technical centre to check the service VLAN on the ONU and OLT
 
 Safety Notes:
-- Changing VLAN settings causes brief outage — inform customer before changes
-- Document original VLAN configuration before modifying
+- Changing VLAN settings causes a brief outage, so inform the customer first
+- Record the original settings before changing them
+
+Source: TM Training Centre, Unifi FTTH module (HSBB VLAN table, CPE layout, ONU fault test method)
+''';
+
+      case 'software_voip_issue':
+        return '''
+TM Unifi Voice (VoIP) Fault — Field Procedures:
+
+Common Causes:
+- VoIP service not configured on the ONU
+- Phone connected to the wrong port
+- Voice VLAN (400) not correct
+
+Required Tools:
+- DECT or corded phone for a test call
+- TM work order
+
+Field Procedures:
+1. Check the ONU LEDs: VOIP white and stable means the service is configured
+2. Check the TEL1 or TEL2 LED for the port the phone uses
+3. Confirm the phone is plugged into the ONU TEL1 or TEL2 (RJ11) port
+4. Confirm the voice VLAN is 400
+5. Reboot the ONU and re-check the VOIP LED
+6. If VOIP stays off, escalate for a service provisioning check
+
+Safety Notes:
+- Inform the customer before rebooting the ONU, as internet drops briefly
+
+Source: TM Training Centre, Unifi FTTH module (ONU front panel, HSBB VLAN table)
 ''';
 
       case 'software_dns_issue':
@@ -611,7 +732,7 @@ Rules:
 - High = directly targets most likely root cause for this specific issue type
 - Medium = important verification or diagnostic step
 - Low = good practice check, less likely root cause
-- Reference specific TM values where relevant (e.g. VLAN 500, GPON Rx: -8 to -27 dBm, 192.168.1.1)
+- Reference specific TM values only when they appear in the knowledge base above (e.g. VLAN 400/500/600, ONU sensitivity -28 dBm, throughput at least 90% of plan). Do not invent values.
 - Do NOT generate generic steps that could apply to any IT issue
 
 Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
