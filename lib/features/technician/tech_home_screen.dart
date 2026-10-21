@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class TechHomeScreen extends StatefulWidget {
   const TechHomeScreen({super.key});
@@ -69,7 +70,13 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
 
             final docs = ticketSnapshot.data?.docs ?? [];
 
-            final allAssignedTickets = docs.map((doc) {
+            // Cancelled tickets are no longer active work for the technician.
+            final activeDocs = docs.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return !CancelledStatus.isCancelled(data['status']);
+            });
+
+            Map<String, dynamic> toTicket(QueryDocumentSnapshot doc) {
               final data = doc.data() as Map<String, dynamic>;
               return {
                 'id': doc.id,
@@ -80,9 +87,25 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
                     .toUpperCase(),
                 'createdAt': data['createdAt'],
               };
-            }).toList();
+            }
 
-            final filteredTickets = _selectedFilter == null
+            final allAssignedTickets = activeDocs.map(toTicket).toList();
+
+            // Only shown under the Cancelled chip, and only this technician's.
+            final cancelledTickets = docs
+                .where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return CancelledStatus.isCancelled(data['status']) &&
+                      data['technicianId'] == firebaseUser.uid;
+                })
+                .map(toTicket)
+                .toList();
+
+            final showingCancelled = _selectedFilter == CancelledStatus.value;
+
+            final filteredTickets = showingCancelled
+                ? cancelledTickets
+                : _selectedFilter == null
                 ? allAssignedTickets
                 : allAssignedTickets
                       .where((t) => t['status'] == _selectedFilter)
@@ -256,17 +279,25 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
                           _buildFilterChip("In Progress", 'IN_PROGRESS'),
                           _buildFilterChip("Resolved", 'RESOLVED'),
                           _buildFilterChip("Closed", 'CLOSED'),
+                          _buildFilterChip(
+                            CancelledStatus.label,
+                            CancelledStatus.value,
+                          ),
                         ],
                       ),
                     ),
                   ),
 
                   Expanded(
-                    child: allAssignedTickets.isEmpty
+                    child: allAssignedTickets.isEmpty && !showingCancelled
                         ? _buildEmptyState()
                         : filteredTickets.isEmpty
-                        ? const Center(
-                            child: Text("No jobs matching this filter."),
+                        ? Center(
+                            child: Text(
+                              showingCancelled
+                                  ? "No cancelled tickets."
+                                  : "No jobs matching this filter.",
+                            ),
                           )
                         : ListView.builder(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
@@ -383,10 +414,13 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
                   Expanded(
                     child: Text(
                       (ticket['title'] ?? '').toString(),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF333333),
+                      style: CancelledStatus.titleStyle(
+                        const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF333333),
+                        ),
+                        status,
                       ),
                     ),
                   ),
@@ -463,6 +497,10 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
         color = Colors.red;
         label = 'NEW';
         break;
+      case 'CANCELLED':
+        color = CancelledStatus.textColor;
+        label = CancelledStatus.label.toUpperCase();
+        break;
       default:
         color = Colors.grey;
         label = status;
@@ -471,7 +509,9 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: CancelledStatus.isCancelled(status)
+            ? CancelledStatus.backgroundColor
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(

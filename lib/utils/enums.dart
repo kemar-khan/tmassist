@@ -1,9 +1,5 @@
 /// Defines the different roles in the system
-enum UserRole {
-  admin,
-  technician,
-  customer,
-}
+enum UserRole { admin, technician, customer }
 
 /// Defines the lifecycle of a service ticket
 enum TicketStatus {
@@ -12,11 +8,12 @@ enum TicketStatus {
   inProgress,
   resolved,
   closed,
+  cancelled,
 }
 
 /// Extension to convert UserRole to readable string
 extension UserRoleExtension on UserRole {
-  String get displayName { 
+  String get displayName {
     switch (this) {
       case UserRole.admin:
         return "Admin";
@@ -42,6 +39,8 @@ extension TicketStatusExtension on TicketStatus {
         return "Resolved";
       case TicketStatus.closed:
         return "Closed";
+      case TicketStatus.cancelled:
+        return "Cancelled";
     }
   }
 

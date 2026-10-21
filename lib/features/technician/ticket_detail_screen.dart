@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -21,13 +22,37 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     setState(() => _isUpdating = true);
 
     try {
-      await FirebaseFirestore.instance
+      final ref = FirebaseFirestore.instance
           .collection('tickets')
-          .doc(widget.ticketId)
-          .update({
-            'status': newStatus,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+          .doc(widget.ticketId);
+
+      // A customer may have cancelled while this screen was open; never
+      // overwrite CANCELLED with IN_PROGRESS.
+      final current = await ref.get();
+      final currentStatus = (current.data()?['status'] ?? '')
+          .toString()
+          .toUpperCase();
+      if (currentStatus != 'ASSIGNED') {
+        if (mounted) {
+          setState(() => _isUpdating = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                CancelledStatus.isCancelled(currentStatus)
+                    ? 'This ticket was cancelled by the customer.'
+                    : 'This ticket can no longer be started.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      await ref.update({
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         setState(() => _isUpdating = false);
@@ -125,10 +150,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 _buildUpdateStatusCard(status),
                 const SizedBox(height: 24),
 
-                // 2. Action Buttons (Technician Specific)
-                _buildSectionTitle('Actions'),
-                _buildActionButtons(data),
-                const SizedBox(height: 24),
+                // 2. Action Buttons (Technician Specific). Hidden entirely for
+                // cancelled tickets: no Checklist or Report to act on.
+                if (status != CancelledStatus.value) ...[
+                  _buildSectionTitle('Actions'),
+                  _buildActionButtons(data),
+                  const SizedBox(height: 24),
+                ],
 
                 // 3. Ticket Status & Progress Timeline
                 _buildSectionTitle('Progress Timeline'),
@@ -223,6 +251,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       case 'CLOSED':
         statusColor = Colors.grey;
         statusIcon = Icons.lock_rounded;
+        break;
+      case 'CANCELLED':
+        statusColor = CancelledStatus.textColor;
+        statusIcon = Icons.cancel_rounded;
         break;
       default:
         statusColor = Colors.orange;
@@ -379,6 +411,35 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (currentStatus == CancelledStatus.value)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: CancelledStatus.backgroundColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.cancel_outlined,
+                    color: CancelledStatus.textColor,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'This ticket was cancelled by the customer. No further action is needed.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: CancelledStatus.textColor,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -701,6 +762,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           'date': updatedDate,
           'desc': 'You marked the job as resolved.',
         },
+      if (status == CancelledStatus.value)
+        {
+          'title': CancelledStatus.label,
+          'date': updatedDate,
+          'desc': 'The customer cancelled this ticket.',
+        },
     ].reversed.toList();
 
     return _buildCard(
@@ -805,6 +872,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         return 'Closed';
       case 'NEW':
         return 'New';
+      case 'CANCELLED':
+        return CancelledStatus.label;
       default:
         return status;
     }

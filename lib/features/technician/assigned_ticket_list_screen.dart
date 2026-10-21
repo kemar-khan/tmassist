@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class AssignedTicketsScreen extends StatefulWidget {
   const AssignedTicketsScreen({super.key});
@@ -11,6 +12,8 @@ class AssignedTicketsScreen extends StatefulWidget {
 
 class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
   String _searchQuery = "";
+  // 'All' excludes cancelled tickets; only the Cancelled chip shows them.
+  String _selectedFilter = 'All';
 
   @override
   Widget build(BuildContext context) {
@@ -36,25 +39,46 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
+          // Search Bar + filter chips
           Container(
             padding: const EdgeInsets.all(16),
             color: const Color(0xFF005CAB),
-            child: TextField(
-              onChanged: (val) => setState(() => _searchQuery = val),
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: "Search by ID or Title...",
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                prefixIcon: const Icon(Icons.search, color: Colors.white),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.15),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            child: Column(
+              children: [
+                TextField(
+                  onChanged: (val) => setState(() => _searchQuery = val),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Search by ID or Title...",
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.15),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildFilterChip('All', 'All'),
+                      _buildFilterChip('Assigned', 'ASSIGNED'),
+                      _buildFilterChip('In Progress', 'IN_PROGRESS'),
+                      _buildFilterChip('Resolved', 'RESOLVED'),
+                      _buildFilterChip('Closed', 'CLOSED'),
+                      _buildFilterChip(
+                        CancelledStatus.label,
+                        CancelledStatus.value,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -85,8 +109,33 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
 
                 final docs = snapshot.data?.docs ?? [];
 
+                final showingCancelled =
+                    _selectedFilter == CancelledStatus.value;
+
                 final assignedTickets = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
+                  final isCancelled = CancelledStatus.isCancelled(
+                    data['status'],
+                  );
+                  // 'All' never includes cancelled tickets (not active work).
+                  // The Cancelled chip shows only this technician's own.
+                  if (showingCancelled) {
+                    if (!isCancelled ||
+                        data['technicianId'] != currentUser.uid) {
+                      return false;
+                    }
+                  } else if (isCancelled) {
+                    return false;
+                  }
+
+                  // Status chips (Assigned, In Progress, Resolved, Closed).
+                  if (_selectedFilter != 'All' && !showingCancelled) {
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .toUpperCase();
+                    if (status != _selectedFilter) return false;
+                  }
+
                   final title = (data['title'] ?? '').toString().toLowerCase();
                   final id = doc.id.toLowerCase();
                   final query = _searchQuery.toLowerCase();
@@ -95,6 +144,19 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 }).toList();
 
                 if (assignedTickets.isEmpty) {
+                  if (showingCancelled) {
+                    return _buildEmptyState(
+                      title: "No cancelled tickets",
+                      subtitle:
+                          "Tickets cancelled by customers will appear here.",
+                    );
+                  }
+                  if (_selectedFilter != 'All') {
+                    return _buildEmptyState(
+                      title: "No matching tickets",
+                      subtitle: "You have no tickets with this status.",
+                    );
+                  }
                   return _buildEmptyState();
                 }
 
@@ -179,10 +241,13 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF333333),
+                  style: CancelledStatus.titleStyle(
+                    const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF333333),
+                    ),
+                    status,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -260,6 +325,10 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
         color = Colors.grey;
         label = 'CLOSED';
         break;
+      case 'CANCELLED':
+        color = CancelledStatus.textColor;
+        label = CancelledStatus.label.toUpperCase();
+        break;
       default:
         color = Colors.orange;
         label = status;
@@ -268,7 +337,9 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: CancelledStatus.isCancelled(status)
+            ? CancelledStatus.backgroundColor
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -282,7 +353,37 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildFilterChip(String label, String value) {
+    final isSelected = _selectedFilter == value;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF005CAB),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        selected: isSelected,
+        onSelected: (_) => setState(() => _selectedFilter = value),
+        selectedColor: Colors.white,
+        backgroundColor: Colors.white.withOpacity(0.15),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isSelected ? Colors.white : Colors.white.withOpacity(0.25),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState({
+    String title = "No active tasks",
+    String subtitle = "All your assigned tickets are completed or closed.",
+  }) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -294,7 +395,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            "No active tasks",
+            title,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -303,7 +404,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            "All your assigned tickets are completed or closed.",
+            subtitle,
             style: TextStyle(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),

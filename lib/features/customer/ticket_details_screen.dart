@@ -1,10 +1,61 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../core/services/ticket_service.dart';
+import '../../utils/cancelled_status.dart';
 
 class TicketDetailsScreen extends StatelessWidget {
   final String ticketId;
 
   const TicketDetailsScreen({super.key, required this.ticketId});
+
+  Future<void> _confirmAndCancel(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Cancel Ticket',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text('Cancel this ticket? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep Ticket'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              'Cancel Ticket',
+              style: TextStyle(color: Colors.red.shade700),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await TicketService().cancelTicket(ticketId);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ticket cancelled'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +120,25 @@ class TicketDetailsScreen extends StatelessWidget {
               children: [
                 _buildSectionTitle('Ticket Status'),
                 _buildStatusCard(status),
+                if (status == 'NEW' || status == 'ASSIGNED') ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _confirmAndCancel(context),
+                    icon: const Icon(Icons.cancel_outlined, size: 20),
+                    label: const Text(
+                      'Cancel Ticket',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade700),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
 
                 _buildSectionTitle('Ticket Info'),
@@ -242,6 +312,13 @@ class TicketDetailsScreen extends StatelessWidget {
             Text(
               'This ticket has been closed.',
               style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+          ],
+          if (currentStatus == CancelledStatus.value) ...[
+            const SizedBox(height: 12),
+            Text(
+              'This ticket was cancelled.',
+              style: TextStyle(color: CancelledStatus.textColor, fontSize: 13),
             ),
           ],
         ],
@@ -436,6 +513,14 @@ class TicketDetailsScreen extends StatelessWidget {
       });
     }
 
+    if (status == CancelledStatus.value) {
+      logs.add({
+        'title': CancelledStatus.label,
+        'date': updatedAt?.toDate(),
+        'desc': 'This ticket was cancelled.',
+      });
+    }
+
     final displayLogs = logs.reversed.toList();
 
     return _buildCard(
@@ -546,6 +631,9 @@ class TicketDetailsScreen extends StatelessWidget {
       case 'CLOSED':
         color = Colors.grey;
         break;
+      case 'CANCELLED':
+        color = CancelledStatus.textColor;
+        break;
       default:
         color = Colors.black54;
     }
@@ -553,7 +641,9 @@ class TicketDetailsScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: CancelledStatus.isCancelled(status)
+            ? CancelledStatus.backgroundColor
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withOpacity(0.5)),
       ),
@@ -580,6 +670,8 @@ class TicketDetailsScreen extends StatelessWidget {
         return 'Resolved';
       case 'CLOSED':
         return 'Closed';
+      case 'CANCELLED':
+        return CancelledStatus.label;
       default:
         return status;
     }

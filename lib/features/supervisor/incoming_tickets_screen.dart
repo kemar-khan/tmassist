@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class IncomingTicketsScreen extends StatefulWidget {
   const IncomingTicketsScreen({super.key});
@@ -58,6 +59,7 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
                       _buildFilterChip('ASSIGNED'),
                       _buildFilterChip('IN_PROGRESS'),
                       _buildFilterChip('RESOLVED'),
+                      _buildFilterChip('CANCELLED'),
                     ],
                   ),
                 ),
@@ -224,10 +226,13 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF333333),
+                  style: CancelledStatus.titleStyle(
+                    const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF333333),
+                    ),
+                    status,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -296,6 +301,10 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
         bgColor = Colors.green.withOpacity(0.1);
         textColor = Colors.green;
         break;
+      case 'CANCELLED':
+        bgColor = CancelledStatus.backgroundColor;
+        textColor = CancelledStatus.textColor;
+        break;
       default:
         bgColor = Colors.grey.withOpacity(0.1);
         textColor = Colors.grey;
@@ -328,6 +337,8 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
         return 'In Progress';
       case 'RESOLVED':
         return 'Resolved';
+      case 'CANCELLED':
+        return CancelledStatus.label;
       case 'All':
         return 'All';
       default:

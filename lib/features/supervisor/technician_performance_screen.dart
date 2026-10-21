@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
+import '../../utils/cancelled_status.dart';
 
 class TechnicianPerformanceScreen extends StatefulWidget {
   const TechnicianPerformanceScreen({super.key});
@@ -130,10 +131,14 @@ class _TechnicianPerformanceScreenState
                       final t = ticket.data() as Map<String, dynamic>;
 
                       if (t['technicianId'] == techId) {
-                        total++;
                         final status = (t['status'] ?? '')
                             .toString()
                             .toUpperCase();
+
+                        // Cancelled tickets don't count towards performance.
+                        if (CancelledStatus.isCancelled(status)) continue;
+
+                        total++;
 
                         if (status == 'ASSIGNED') assigned++;
                         if (status == 'IN_PROGRESS') inProgress++;

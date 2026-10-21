@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class AssignTicketScreen extends StatefulWidget {
   final String ticketId;
@@ -35,16 +36,32 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseFirestore.instance
+      final ref = FirebaseFirestore.instance
           .collection('tickets')
-          .doc(widget.ticketId)
-          .update({
-            'technicianId': _selectedTechnicianId,
-            'technicianName': _selectedTechnicianName,
-            'supervisorId': supervisor.uid,
-            'status': 'ASSIGNED',
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+          .doc(widget.ticketId);
+
+      // The customer may have cancelled while this screen was open; never
+      // overwrite CANCELLED with ASSIGNED.
+      final current = await ref.get();
+      if (CancelledStatus.isCancelled(current.data()?['status'])) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("This ticket was cancelled by the customer."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      await ref.update({
+        'technicianId': _selectedTechnicianId,
+        'technicianName': _selectedTechnicianName,
+        'supervisorId': supervisor.uid,
+        'status': 'ASSIGNED',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
 

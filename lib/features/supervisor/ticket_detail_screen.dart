@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:signature/signature.dart';
+import '../../utils/cancelled_status.dart';
 
 class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -225,6 +226,12 @@ class _SupervisorTicketDetailScreenState
                     "This ticket is Closed",
                     Icons.lock_outline,
                     Colors.grey,
+                  )
+                else if (status == CancelledStatus.value)
+                  _buildInfoStatusCard(
+                    "This ticket was cancelled by the customer",
+                    Icons.cancel_outlined,
+                    CancelledStatus.textColor,
                   )
                 else
                   _buildInfoStatusCard(
@@ -544,6 +551,9 @@ class _SupervisorTicketDetailScreenState
       case 'CLOSED':
         currentStepIndex = 4;
         break;
+      case 'CANCELLED':
+        currentStepIndex = -1; // no progress step applies
+        break;
       default:
         currentStepIndex = 0;
     }
@@ -813,6 +823,12 @@ class _SupervisorTicketDetailScreenState
           'title': 'Closed',
           'date': updatedDate,
           'desc': 'Supervisor closed the ticket.',
+        },
+      if (status == CancelledStatus.value)
+        {
+          'title': CancelledStatus.label,
+          'date': updatedDate,
+          'desc': 'The customer cancelled this ticket.',
         },
     ].reversed.toList();
 

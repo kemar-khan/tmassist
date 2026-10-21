@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class MyTicketsScreen extends StatefulWidget {
   const MyTicketsScreen({super.key});
@@ -88,6 +89,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                       _buildFilterChip('ASSIGNED'),
                       _buildFilterChip('IN_PROGRESS'),
                       _buildFilterChip('RESOLVED'),
+                      _buildFilterChip('CANCELLED'),
                     ],
                   ),
                 ),
@@ -264,10 +266,13 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
               const SizedBox(height: 8),
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF333333),
+                style: CancelledStatus.titleStyle(
+                  const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF333333),
+                  ),
+                  status,
                 ),
               ),
               const SizedBox(height: 6),
@@ -347,6 +352,9 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
       case 'CLOSED':
         color = Colors.grey;
         break;
+      case 'CANCELLED':
+        color = CancelledStatus.textColor;
+        break;
       default:
         color = Colors.black54;
     }
@@ -354,7 +362,9 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: CancelledStatus.isCancelled(status)
+            ? CancelledStatus.backgroundColor
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
@@ -406,6 +416,8 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
         return 'Resolved';
       case 'CLOSED':
         return 'Closed';
+      case 'CANCELLED':
+        return CancelledStatus.label;
       default:
         return label;
     }

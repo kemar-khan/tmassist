@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/service_areas.dart';
+import '../../utils/cancelled_status.dart';
 
 class SupervisorHomeScreen extends StatefulWidget {
   const SupervisorHomeScreen({super.key});
@@ -57,7 +58,12 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
               );
             }
 
-            final docs = ticketSnapshot.data?.docs ?? [];
+            // CANCELLED tickets are left out of the totals, category cards,
+            // weekly chart and recent list (they stay visible in the Tickets tab).
+            final docs = (ticketSnapshot.data?.docs ?? []).where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return !CancelledStatus.isCancelled(data['status']);
+            });
 
             final tickets = docs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
@@ -808,10 +814,13 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
                     Expanded(
                       child: Text(
                         (ticket['title'] ?? '').toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF333333),
+                        style: CancelledStatus.titleStyle(
+                          const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF333333),
+                          ),
+                          status,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -902,6 +911,10 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
         color = Colors.grey;
         label = 'Closed';
         break;
+      case 'CANCELLED':
+        color = CancelledStatus.textColor;
+        label = CancelledStatus.label;
+        break;
       default:
         color = Colors.grey;
         label = status;
@@ -910,7 +923,9 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: CancelledStatus.isCancelled(status)
+            ? CancelledStatus.backgroundColor
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3)),
       ),

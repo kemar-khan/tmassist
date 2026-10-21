@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/ticket.dart';
+import '../../utils/cancelled_status.dart';
 import '../../utils/enums.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -24,6 +25,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         return TicketStatus.resolved;
       case 'CLOSED':
         return TicketStatus.closed;
+      case 'CANCELLED':
+        return TicketStatus.cancelled;
       default:
         return TicketStatus.newTicket;
     }
@@ -423,10 +426,15 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     const SizedBox(height: 4),
                     Text(
                       ticket.title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF333333),
+                      style: CancelledStatus.titleStyle(
+                        const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF333333),
+                        ),
+                        ticket.status == TicketStatus.cancelled
+                            ? CancelledStatus.value
+                            : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -450,6 +458,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   Widget _buildStatusBadge(TicketStatus status) {
     Color color;
     switch (status) {
+      case TicketStatus.cancelled:
+        color = CancelledStatus.textColor;
+        break;
       case TicketStatus.newTicket:
         color = Colors.orange;
         break;
@@ -470,7 +481,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: status == TicketStatus.cancelled
+            ? CancelledStatus.backgroundColor
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(

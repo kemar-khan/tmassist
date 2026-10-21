@@ -59,4 +59,40 @@ class TicketService {
       print('Auto assignment error: $e');
     }
   }
+
+  /// Soft-cancels a ticket (nothing is deleted). Allowed only while the ticket
+  /// is NEW, or ASSIGNED and the technician has not started the job.
+  Future<void> cancelTicket(String ticketId, {String? reason}) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('No logged in user found.');
+    }
+
+    final ref = _firestore.collection('tickets').doc(ticketId);
+    final snap = await ref.get();
+    final data = snap.data();
+    if (!snap.exists || data == null) {
+      throw Exception('Ticket not found.');
+    }
+
+    if (data['customerId'] != user.uid) {
+      throw Exception('You can only cancel your own tickets.');
+    }
+
+    final status = (data['status'] ?? '').toString().toUpperCase();
+    final canCancel =
+        status == 'NEW' || (status == 'ASSIGNED' && data['startedAt'] == null);
+    if (!canCancel) {
+      throw Exception('Ticket can no longer be cancelled');
+    }
+
+    final trimmedReason = reason?.trim() ?? '';
+    await ref.update({
+      'status': 'CANCELLED',
+      'cancelledAt': FieldValue.serverTimestamp(),
+      'cancelledBy': user.uid,
+      if (trimmedReason.isNotEmpty) 'cancellationReason': trimmedReason,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 }

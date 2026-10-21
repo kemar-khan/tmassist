@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/cancelled_status.dart';
 
 class TechAnalyticsScreen extends StatelessWidget {
   const TechAnalyticsScreen({super.key});
@@ -35,7 +36,11 @@ class TechAnalyticsScreen extends StatelessWidget {
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        // Cancelled tickets are excluded from the technician's stats.
+        final docs = (snapshot.data?.docs ?? []).where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return !CancelledStatus.isCancelled(data['status']);
+        });
 
         final tickets = docs.map((doc) {
           final data = doc.data() as Map<String, dynamic>;
