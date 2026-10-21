@@ -29,6 +29,54 @@ class ChecklistService {
   String _detectSubcategory(String category, String title, String description) {
     final text = '$title $description'.toLowerCase();
 
+    // Pass 1: distinctive service keywords, matched regardless of the
+    // category Gemini chose. Gemini often files TV/phone/DNS issues under
+    // "Network", so we don't let the category block these.
+    if (_has(text, [
+      'onu password',
+      'auth led',
+      'auth light',
+      'not authenticated',
+    ])) {
+      return 'onu_auth_failure';
+    }
+
+    if (_has(text, [
+      'voip',
+      'telephone',
+      'landline',
+      'dial tone',
+      'tel1',
+      'tel2',
+      'home phone',
+      'phone line',
+      'voice',
+    ])) {
+      return 'voip_issue';
+    }
+
+    if (_has(text, [
+      'iptv',
+      'hypptv',
+      'vlan',
+      'tv box',
+      'tv channel',
+      'set top box',
+      'set-top',
+    ])) {
+      return 'vlan_config';
+    }
+
+    if (_has(text, ['dns', 'website'])) {
+      return 'dns_issue';
+    }
+
+    if (_has(text, ['pppoe'])) {
+      return 'pppoe_auth';
+    }
+
+    // Pass 2: category-specific rules (your existing switch, unchanged)
+
     switch (category.toLowerCase()) {
       case 'network':
         if (_has(text, [
