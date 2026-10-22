@@ -256,12 +256,10 @@ class ChecklistService {
   }
 
   // --- Step 5: Knowledge Base Retrieval by Subcategory ---
-  String _getKnowledgeBase(String category, String subcategory) {
-    final key = '${category.toLowerCase()}_$subcategory';
-
-    switch (key) {
+  String _getKnowledgeBase(String subcategory) {
+    switch (subcategory) {
       // NETWORK SUBCATEGORIES
-      case 'network_fiber_loss':
+      case 'fiber_loss':
         return '''
 TM Unifi FTTH No Optical Signal — Field Procedures:
 
@@ -292,7 +290,7 @@ Safety Notes:
 Source: TM Training Centre, Unifi FTTH module (ONU LED table, PON power budget, tools)
 ''';
 
-      case 'network_onu_auth_failure':
+      case 'onu_auth_failure':
         return '''
 TM Unifi ONU Authentication Failure — Field Procedures:
 
@@ -320,7 +318,7 @@ Safety Notes:
 Source: TM Training Centre, Unifi FTTH module (ONU normal working condition, fault test method)
 ''';
 
-      case 'network_wifi_issue':
+      case 'wifi_issue':
         return '''
 TM WiFi Connectivity — Field Procedures:
 
@@ -351,7 +349,7 @@ Safety Notes:
 - Always back up router config before making changes
 ''';
 
-      case 'network_speed_degradation':
+      case 'speed_degradation':
         return '''
 TM Unifi Slow Speed — Field Procedures:
 
@@ -389,7 +387,7 @@ Safety Notes:
 Source: TM Training Centre, Unifi FTTH module (QoS internet speed slides, PON technology)
 ''';
 
-      case 'network_intermittent':
+      case 'intermittent':
         return '''
 TM Unifi Intermittent Disconnection — Field Procedures:
 
@@ -422,7 +420,7 @@ Source: TM Training Centre, Unifi FTTH module (ONU LED table, QoS slides, ONU fa
 ''';
 
       // HARDWARE SUBCATEGORIES
-      case 'hardware_ont_failure':
+      case 'ont_failure':
         return '''
 TM Unifi ONU (ONT) Hardware or Power Fault — Field Procedures:
 
@@ -452,7 +450,7 @@ Safety Notes:
 Source: TM Training Centre, Unifi FTTH module (ONU back and front panel, fault test method)
 ''';
 
-      case 'hardware_router_failure':
+      case 'router_failure':
         return '''
 TM Router/Modem Failure — Field Procedures:
 
@@ -484,7 +482,7 @@ Safety Notes:
 - Document original configuration before making changes
 ''';
 
-      case 'hardware_cable_damage':
+      case 'cable_damage':
         return '''
 TM Unifi Fibre Cable and Connector Damage — Field Procedures:
 
@@ -520,7 +518,7 @@ Source: TM Training Centre, Unifi FTTH module (fibre cleaning kits, inspection s
 ''';
 
       // SOFTWARE SUBCATEGORIES
-      case 'software_pppoe_auth':
+      case 'pppoe_auth':
         return '''
 TM PPPoE Authentication Failure — Field Procedures:
 
@@ -550,7 +548,7 @@ Safety Notes:
 - Confirm with customer before resetting any credentials
 ''';
 
-      case 'software_vlan_config':
+      case 'vlan_config':
         return '''
 TM Unifi Service and VLAN Configuration — Field Procedures:
 
@@ -582,7 +580,7 @@ Safety Notes:
 Source: TM Training Centre, Unifi FTTH module (HSBB VLAN table, CPE layout, ONU fault test method)
 ''';
 
-      case 'software_voip_issue':
+      case 'voip_issue':
         return '''
 TM Unifi Voice (VoIP) Fault — Field Procedures:
 
@@ -609,7 +607,7 @@ Safety Notes:
 Source: TM Training Centre, Unifi FTTH module (ONU front panel, HSBB VLAN table)
 ''';
 
-      case 'software_dns_issue':
+      case 'dns_issue':
         return '''
 TM DNS Resolution Failure — Field Procedures:
 
@@ -642,31 +640,29 @@ Safety Notes:
       // DEFAULT / OTHER
       default:
         debugPrint(
-          '[CHECKLIST] USING FALLBACK default knowledge base entry (no entry for key "$key")',
+          '[CHECKLIST] USING FALLBACK default knowledge base entry (no entry for subcategory "$subcategory")',
         ); // TEMP-DEBUG [CHECKLIST]
         return '''
-TM General Troubleshooting — Standard Field Procedures:
+TM General Service Request - Standard Procedures:
 
 Common Causes:
-- Undetermined fault requiring systematic layer-by-layer isolation
-- Issue may span multiple systems (physical, network, software, account)
-- External factor such as weather, construction, or third-party interference
+- Request is not a clear technical fault (account, billing, package, installation or relocation)
+- Fault is not yet identified and needs systematic isolation
+- Request details are unclear or incomplete
 
 Required Tools:
-- Optical Power Meter and fiber inspection probe
-- Cable tester and multimeter
-- Laptop for configuration and diagnostic access
-- TM technician portal for account and line status verification
+- Laptop for diagnostic access
+- TM work order
 
 Field Procedures:
-1. Gather detailed issue description — exact symptoms, when it started, what changed recently
-2. Verify TM account status and active services via technician portal
-3. Check TM service outage dashboard — confirm no active area outage
-4. Inspect all physical connections from entry point to all CPE units
-5. Test systematically: physical → optical signal → network → application layer
-6. Isolate whether fault is on TM infrastructure or customer premises equipment
-7. Apply fix at identified fault layer and verify full service restoration
-8. If root cause undetermined, document all findings and escalate to TM NOC
+1. Gather a detailed description: exact symptoms or request, when it started, and what changed recently
+2. Decide whether this is a service request or a fault
+3. If it is a billing, account or package request, advise the customer of the correct TM channel and do not make changes on site
+4. If it is an installation or relocation, confirm the address and preferred schedule with the customer
+5. If it is a fault, inspect all physical connections from the entry point to all customer equipment, and check the ONU and gateway LED status
+6. Isolate whether the fault is on TM infrastructure or on the customer's own equipment
+7. Apply the fix and verify that service is fully restored
+8. If the cause cannot be determined, document all findings on the TM work order and call the field technical centre, or escalate to the supervisor
 
 Safety Notes:
 - Follow TM field safety guidelines at all times
@@ -776,7 +772,7 @@ Safety Notes:
     final subcategory = _detectSubcategory(category, title, description);
 
     // Step 5: Retrieve subcategory-specific knowledge base
-    final knowledgeBase = _getKnowledgeBase(category, subcategory);
+    final knowledgeBase = _getKnowledgeBase(subcategory);
 
     // TEMP-DEBUG [CHECKLIST] start
     debugPrint('[CHECKLIST] category=$category subcategory=$subcategory');
