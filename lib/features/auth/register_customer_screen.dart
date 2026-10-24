@@ -155,9 +155,23 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
                       label: "Phone Number",
                       icon: Icons.phone_outlined,
                       keyboardType: TextInputType.phone,
-                      validator: (val) => val == null || val.isEmpty
-                          ? "Enter your phone number"
-                          : null,
+                      validator: (val) {
+                        if (val == null || val.trim().isEmpty) {
+                          return "Enter your phone number";
+                        }
+                        // Ignore spaces, dashes and brackets, then require
+                        // 10 to 15 digits with an optional leading +.
+                        final digitsOnly = val.trim().replaceAll(
+                          RegExp(r'[\s\-()]'),
+                          '',
+                        );
+                        if (!RegExp(
+                          r'^\+?[0-9]{10,15}$',
+                        ).hasMatch(digitsOnly)) {
+                          return "Enter a valid phone number";
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
                     _buildTextField(
