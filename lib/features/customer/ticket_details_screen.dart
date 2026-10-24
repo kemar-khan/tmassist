@@ -220,7 +220,10 @@ class TicketDetailsScreen extends StatelessWidget {
 
   Widget _buildStatusCard(String currentStatus) {
     final steps = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
-    final currentIndex = steps.indexOf(currentStatus);
+    // CLOSED was RESOLVED first, so it shows every step as completed.
+    final currentIndex = currentStatus == 'CLOSED'
+        ? steps.length - 1
+        : steps.indexOf(currentStatus);
 
     return _buildCard(
       child: Column(

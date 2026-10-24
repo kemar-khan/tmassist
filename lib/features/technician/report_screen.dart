@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:signature/signature.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/cloudinary_service.dart';
+import '../../utils/image_picker_helper.dart';
 import '../../core/services/report_pdf_service.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -166,9 +167,22 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _uploadProof() async {
+    final picked = await pickImageWithChoice(context);
+    if (!mounted) return;
+    if (picked == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No photo selected'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isUploadingProof = true);
     try {
-      final url = await CloudinaryService().uploadFile();
+      final url = await CloudinaryService().uploadFromPath(picked.path);
       if (!mounted) return;
       setState(() => _proofUrl = url);
       await _saveDraftNow();

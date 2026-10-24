@@ -60,6 +60,7 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
         'technicianName': _selectedTechnicianName,
         'supervisorId': supervisor.uid,
         'status': 'ASSIGNED',
+        'assignmentType': 'MANUAL',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 

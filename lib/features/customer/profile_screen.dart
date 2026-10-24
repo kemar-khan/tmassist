@@ -25,14 +25,7 @@ class ProfileScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF005CAB),
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () {
-              // Settings action
-            },
-          ),
-        ],
+        actions: [],
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
@@ -90,22 +83,6 @@ class ProfileScreen extends StatelessWidget {
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFF005CAB),
                               ),
-                            ),
-                          ),
-                          Container(
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFF6600),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.camera_alt,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              onPressed: () {
-                                // Change picture (future)
-                              },
                             ),
                           ),
                         ],

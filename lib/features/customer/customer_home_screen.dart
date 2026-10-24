@@ -13,6 +13,33 @@ class CustomerHomeScreen extends StatefulWidget {
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  // Full name from the user's profile (users/{uid}.fullName).
+  String? _fullName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFullName();
+  }
+
+  Future<void> _loadFullName() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      final name = (doc.data()?['fullName'] ?? '').toString().trim();
+      if (mounted && name.isNotEmpty) {
+        setState(() => _fullName = name);
+      }
+    } catch (_) {
+      // Keep the email-based fallback if the profile can't be read.
+    }
+  }
+
   TicketStatus _parseStatus(String status) {
     switch (status.toUpperCase()) {
       case 'NEW':
@@ -54,7 +81,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
-    final userName = firebaseUser.email?.split('@').first ?? 'User';
+    final userName =
+        _fullName ?? firebaseUser.email?.split('@').first ?? 'User';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
@@ -113,33 +141,29 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hi, ${userName.split(' ').first} 👋',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Welcome, ${userName.split(' ').first}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Customer Portal',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white.withOpacity(0.8),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Customer Portal',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withOpacity(0.8),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          onPressed: () {},
-                          icon: const Icon(
-                            Icons.notifications_none_rounded,
-                            color: Colors.white,
-                            size: 28,
+                            ],
                           ),
                         ),
                       ],

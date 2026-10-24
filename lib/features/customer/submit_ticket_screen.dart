@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/services/ticket_service.dart';
 import '../../core/services/cloudinary_service.dart';
+import '../../utils/image_picker_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../core/services/ai_extraction_service.dart';
@@ -147,10 +148,23 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   }
 
   Future<void> _uploadAttachment() async {
+    final picked = await pickImageWithChoice(context);
+    if (!mounted) return;
+    if (picked == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No photo selected'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isUploadingAttachment = true);
 
     try {
-      final url = await CloudinaryService().uploadFile();
+      final url = await CloudinaryService().uploadFromPath(picked.path);
 
       setState(() {
         _attachmentUrl = url;
@@ -175,6 +189,13 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         setState(() => _isUploadingAttachment = false);
       }
     }
+  }
+
+  void _removeAttachment() {
+    setState(() {
+      _attachmentUrl = null;
+      _attachmentFileName = null;
+    });
   }
 
   Future<void> _extractDetails() async {
@@ -589,6 +610,32 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                                 },
                               ),
                             ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: _isUploadingAttachment
+                                ? null
+                                : _uploadAttachment,
+                            icon: const Icon(Icons.swap_horiz, size: 18),
+                            label: const Text('Replace'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _isUploadingAttachment
+                                ? null
+                                : _removeAttachment,
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                            label: const Text(
+                              'Remove',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ],
                 ),

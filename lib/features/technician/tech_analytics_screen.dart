@@ -58,7 +58,11 @@ class TechAnalyticsScreen extends StatelessWidget {
         final inProgress = tickets
             .where((t) => t['status'] == 'IN_PROGRESS')
             .length;
-        final resolved = tickets.where((t) => t['status'] == 'RESOLVED').length;
+        // A CLOSED ticket was RESOLVED first, so both count as resolved work.
+        const resolvedStatuses = {'RESOLVED', 'CLOSED'};
+        final resolved = tickets
+            .where((t) => resolvedStatuses.contains(t['status']))
+            .length;
         final assigned = tickets.where((t) => t['status'] == 'ASSIGNED').length;
         final resolutionRate = total > 0
             ? ((resolved / total) * 100).toStringAsFixed(0)
@@ -93,7 +97,7 @@ class TechAnalyticsScreen extends StatelessWidget {
         final now = DateTime.now();
         final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
         for (final t in tickets) {
-          if (t['status'] != 'RESOLVED') continue;
+          if (!resolvedStatuses.contains(t['status'])) continue;
           final createdAt = t['createdAt'];
           if (createdAt is! Timestamp) continue;
           final date = createdAt.toDate();

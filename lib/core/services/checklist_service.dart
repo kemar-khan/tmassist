@@ -681,7 +681,7 @@ Safety Notes:
       final ticketSnapshot = await _firestore
           .collection('tickets')
           .where('category', isEqualTo: category)
-          .where('status', isEqualTo: 'RESOLVED')
+          .where('status', whereIn: ['RESOLVED', 'CLOSED'])
           .limit(5)
           .get();
 

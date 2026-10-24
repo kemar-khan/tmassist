@@ -18,7 +18,12 @@ class CloudinaryService {
       throw Exception('No file selected');
     }
 
-    final file = File(result.files.single.path!);
+    return uploadFromPath(result.files.single.path!);
+  }
+
+  /// Uploads the file at [filePath] (for example from the camera or gallery).
+  Future<String> uploadFromPath(String filePath) async {
+    final file = File(filePath);
 
     final request = http.MultipartRequest(
       'POST',

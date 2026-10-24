@@ -304,7 +304,7 @@ class _TechnicianPerformanceScreenState
   ) {
     int totalResolved = technicians.fold<int>(
       0,
-      (sum, t) => sum + (t['resolved'] as int),
+      (sum, t) => sum + (t['resolved'] as int) + (t['closed'] as int),
     );
 
     return Container(
