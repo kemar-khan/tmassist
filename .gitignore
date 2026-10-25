@@ -45,4 +45,4 @@ app.*.map.json
 /android/app/release
 
 # App secrets / local config
-lib/config/app_constants.dart
+.env
