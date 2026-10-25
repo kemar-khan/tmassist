@@ -10,7 +10,7 @@ class SpeedTestScreen extends StatefulWidget {
 }
 
 class _SpeedTestScreenState extends State<SpeedTestScreen> {
-  static final Uri _speedTestUri = Uri.parse('https://www.speedtest.net/');
+  static final Uri _speedTestUri = Uri.parse('https://speedtest.tm.com.my/');
 
   late final WebViewController _controller;
   int _progress = 0;

@@ -89,6 +89,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                       _buildFilterChip('ASSIGNED'),
                       _buildFilterChip('IN_PROGRESS'),
                       _buildFilterChip('RESOLVED'),
+                      _buildFilterChip('CLOSED'),
                       _buildFilterChip('CANCELLED'),
                     ],
                   ),
