@@ -16,11 +16,12 @@ class SupervisorMainScreen extends StatefulWidget {
 class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = const [
-    SupervisorHomeScreen(), // Supervisor Home
-    IncomingTicketsScreen(),
-    TechnicianPerformanceScreen(),
-    SupervisorProfileScreen(),
+  // "View All" on the home screen jumps to the Tickets tab (index 1).
+  late final List<Widget> _screens = [
+    SupervisorHomeScreen(onViewAllTickets: () => _onItemTapped(1)),
+    const IncomingTicketsScreen(),
+    const TechnicianPerformanceScreen(),
+    const SupervisorProfileScreen(),
   ];
 
   void _onItemTapped(int index) {

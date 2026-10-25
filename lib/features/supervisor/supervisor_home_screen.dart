@@ -3,9 +3,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/service_areas.dart';
 import '../../utils/cancelled_status.dart';
+import 'incoming_tickets_screen.dart';
 
 class SupervisorHomeScreen extends StatefulWidget {
-  const SupervisorHomeScreen({super.key});
+  /// Called by "View All" to switch to the Tickets tab. When null (the screen
+  /// is used outside the tab bar) it opens the Incoming Tickets screen instead.
+  final VoidCallback? onViewAllTickets;
+
+  const SupervisorHomeScreen({super.key, this.onViewAllTickets});
 
   @override
   State<SupervisorHomeScreen> createState() => _SupervisorHomeScreenState();
@@ -163,7 +168,7 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
                             ),
                             child: IconButton(
                               icon: const Icon(
-                                Icons.notifications_none_rounded,
+                                Icons.person,
                                 color: Colors.white,
                               ),
                               onPressed: () {
@@ -512,7 +517,18 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
                               ),
                               TextButton(
                                 onPressed: () {
-                                  // View all functionality
+                                  final goToTickets = widget.onViewAllTickets;
+                                  if (goToTickets != null) {
+                                    goToTickets();
+                                  } else {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const IncomingTicketsScreen(),
+                                      ),
+                                    );
+                                  }
                                 },
                                 child: const Text(
                                   "View All",
