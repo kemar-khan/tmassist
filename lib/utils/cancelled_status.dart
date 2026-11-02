@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// Single source of truth for how a CANCELLED ticket looks, so the badge is
-/// identical in the customer, technician and supervisor screens and clearly
-/// different from CLOSED (grey).
+import '../core/theme/app_tokens.dart';
+
+/// How a CANCELLED ticket looks. The colours come from the design tokens, so
+/// existing callers keep working and stay in step with `StatusBadge`.
 class CancelledStatus {
   static const String value = 'CANCELLED';
   static const String label = 'Cancelled';
 
-  static Color get textColor => Colors.red.shade700;
-  static Color get backgroundColor => Colors.red.shade50;
+  static Color get textColor => AppColors.cancelledFg;
+  static Color get backgroundColor => AppColors.cancelledBg;
 
   static bool isCancelled(Object? status) =>
       status?.toString().toUpperCase() == value;
@@ -19,7 +20,7 @@ class CancelledStatus {
     if (!isCancelled(status)) return base;
     return base.copyWith(
       decoration: TextDecoration.lineThrough,
-      color: Colors.grey[500],
+      color: AppColors.inkFaint,
     );
   }
 }

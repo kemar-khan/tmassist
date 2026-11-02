@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../models/ticket.dart';
-import '../../utils/cancelled_status.dart';
 import '../../utils/enums.dart';
+import '../../widgets/home_header.dart';
+import '../../widgets/progress_stepper.dart';
+import '../../widgets/status_badge.dart';
+import 'speed_test_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -84,458 +90,496 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     final userName =
         _fullName ?? firebaseUser.email?.split('@').first ?? 'User';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('tickets')
-            .where('customerId', isEqualTo: firebaseUser.uid)
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    // Solid brand-blue status bar with light icons, so it reads as part of
+    // the header. Only this tab changes the style; the others keep the theme's.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AppTheme.statusBarOnPrimary,
+      child: Scaffold(
+        body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('tickets')
+              .where('customerId', isEqualTo: firebaseUser.uid)
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-
-          final tickets = (snapshot.data?.docs ?? [])
-              .map((doc) => _mapDocToTicket(doc))
-              .toList();
-
-          // Calculate ticket counts
-          final assignedCount = tickets
-              .where((t) => t.status == TicketStatus.assigned)
-              .length;
-          final inProgressCount = tickets
-              .where((t) => t.status == TicketStatus.inProgress)
-              .length;
-          final resolvedCount = tickets
-              .where((t) => t.status == TicketStatus.resolved)
-              .length;
-          final closedCount = tickets
-              .where((t) => t.status == TicketStatus.closed)
-              .length;
-
-          // Get recent tickets (last 3)
-          final recentTickets = tickets.take(3).toList();
-
-          return Column(
-            children: [
-              // Curved Header Section
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF005CAB),
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(30),
-                    bottomRight: Radius.circular(30),
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.s4),
+                  child: Text(
+                    'Error: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: AppText.body.copyWith(color: AppColors.cancelledFg),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    // Welcome Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Welcome, ${userName.split(' ').first}',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Customer Portal',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white.withOpacity(0.8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Profile Card
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          const CircleAvatar(
-                            radius: 25,
-                            backgroundColor: Color(0xFFFF6600),
-                            child: Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 30,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  userName,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF005CAB),
-                                  ),
-                                ),
-                                const Text(
-                                  "Valued Customer",
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF005CAB).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Text(
-                              "Active",
-                              style: TextStyle(
-                                color: Color(0xFF005CAB),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Summary Counters
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildCounter("Assigned", assignedCount, Colors.blue),
-                        _buildCounter(
-                          "In Progress",
-                          inProgressCount,
-                          Colors.purpleAccent,
-                        ),
-                        _buildCounter("Resolved", resolvedCount, Colors.green),
-                        _buildCounter("Closed", closedCount, Colors.grey),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              );
+            }
 
-              // Main Content
+            final tickets = (snapshot.data?.docs ?? [])
+                .map((doc) => _mapDocToTicket(doc))
+                .toList();
+
+            // Calculate ticket counts
+            final assignedCount = tickets
+                .where((t) => t.status == TicketStatus.assigned)
+                .length;
+            final inProgressCount = tickets
+                .where((t) => t.status == TicketStatus.inProgress)
+                .length;
+            // Resolved includes CLOSED: a closed ticket was resolved first.
+            final resolvedCount = tickets
+                .where(
+                  (t) =>
+                      t.status == TicketStatus.resolved ||
+                      t.status == TicketStatus.closed,
+                )
+                .length;
+
+            // Active ticket: the most recently updated ASSIGNED / IN_PROGRESS
+            // one, taken from the same list (no extra query).
+            final activeTickets = tickets
+                .where(
+                  (t) =>
+                      t.status == TicketStatus.assigned ||
+                      t.status == TicketStatus.inProgress,
+                )
+                .toList();
+            final Ticket? activeTicket = activeTickets.isEmpty
+                ? null
+                : activeTickets.reduce(
+                    (a, b) => b.updatedAt.isAfter(a.updatedAt) ? b : a,
+                  );
+
+            // The technician's name is already on the loaded ticket document.
+            String? activeTechnicianName;
+            if (activeTicket != null) {
+              for (final doc in snapshot.data?.docs ?? const []) {
+                if (doc.id == activeTicket.id) {
+                  final name =
+                      ((doc.data() as Map<String, dynamic>)['technicianName'] ??
+                              '')
+                          .toString()
+                          .trim();
+                  if (name.isNotEmpty) activeTechnicianName = name;
+                }
+              }
+            }
+
+            return CustomerHomeContent(
+              title: 'Welcome, ${userName.split(' ').first}',
+              assignedCount: assignedCount,
+              inProgressCount: inProgressCount,
+              resolvedCount: resolvedCount,
+              activeTicket: activeTicket,
+              activeTechnicianName: activeTechnicianName,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Maps a ticket status to the stored value the shared status widgets expect.
+String _statusValue(TicketStatus status) {
+  switch (status) {
+    case TicketStatus.newTicket:
+      return 'NEW';
+    case TicketStatus.assigned:
+      return 'ASSIGNED';
+    case TicketStatus.inProgress:
+      return 'IN_PROGRESS';
+    case TicketStatus.resolved:
+      return 'RESOLVED';
+    case TicketStatus.closed:
+      return 'CLOSED';
+    case TicketStatus.cancelled:
+      return 'CANCELLED';
+  }
+}
+
+/// The visible part of the customer home: header with overlapping counters,
+/// the Submit New Ticket card and the recent tickets. It only draws what it
+/// is given; the data and the counts come from [CustomerHomeScreen].
+class CustomerHomeContent extends StatelessWidget {
+  final String title;
+  final int assignedCount;
+  final int inProgressCount;
+  final int resolvedCount;
+
+  /// The ticket being worked on (ASSIGNED or IN_PROGRESS), if any.
+  final Ticket? activeTicket;
+  final String? activeTechnicianName;
+
+  const CustomerHomeContent({
+    super.key,
+    required this.title,
+    required this.assignedCount,
+    required this.inProgressCount,
+    required this.resolvedCount,
+    this.activeTicket,
+    this.activeTechnicianName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      // The floating nav bar sits over the bottom of the screen. Inside a
+      // Scaffold with extendBody, the body's bottom padding already includes
+      // the bar and the device's safe area, so only a gap is added here.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          HomeHeader(
+            title: title,
+            subtitle: 'Customer Portal',
+            overlapChild: _CountersCard(
+              counters: [
+                _Counter('Assigned', assignedCount, AppColors.assignedFg),
+                _Counter('In Progress', inProgressCount, AppColors.progressFg),
+                _Counter('Resolved', resolvedCount, AppColors.resolvedFg),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: AppSpacing.s4),
+
+                // Active Ticket
+                if (activeTicket != null) ...[
+                  _ActiveTicketCard(
+                    ticket: activeTicket!,
+                    technicianName: activeTechnicianName,
+                  ),
+                  const SizedBox(height: AppSpacing.s4),
+                ],
+
+                // Submit New Ticket (primary action)
+                const _SubmitTicketCard(),
+
+                const SizedBox(height: AppSpacing.s3),
+
+                // Speed Test
+                const _SpeedTestTile(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Counter {
+  final String label;
+  final int count;
+  final Color color;
+
+  const _Counter(this.label, this.count, this.color);
+}
+
+/// White card with the ticket counters in equal columns split by hairlines.
+class _CountersCard extends StatelessWidget {
+  final List<_Counter> counters;
+
+  const _CountersCard({required this.counters});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < counters.length; i++) ...[
+              if (i > 0) Container(width: 1, color: AppColors.border),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                child: Semantics(
+                  container: true,
+                  label: '${counters[i].label}: ${counters[i].count}',
+                  excludeSemantics: true,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Submit New Ticket Card (Prominent)
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pushNamed(context, '/customer/submit');
-                        },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFF6600), Color(0xFFFF8800)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFFF6600).withOpacity(0.3),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(
-                                  Icons.add_task_rounded,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Submit New Ticket',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Need help? Report an issue now.',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.arrow_forward_ios_rounded,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                            ],
-                          ),
+                      Text(
+                        counters[i].count.toString(),
+                        style: AppText.display.copyWith(
+                          color: counters[i].color,
                         ),
                       ),
-
-                      const SizedBox(height: 28),
-
-                      // Recent Tickets Section
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Recent Tickets',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/customer/tickets');
-                            },
-                            child: const Text(
-                              'View All',
-                              style: TextStyle(
-                                color: Color(0xFF005CAB),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (recentTickets.isEmpty)
-                        _buildEmptyState()
-                      else
-                        ...recentTickets.map(
-                          (ticket) => _buildRecentTicketCard(ticket),
+                      Text(
+                        counters[i].label,
+                        textAlign: TextAlign.center,
+                        style: AppText.caption.copyWith(
+                          color: AppColors.inkMuted,
                         ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ],
-          );
-        },
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildCounter(String label, int count, Color color) {
-    return Column(
-      children: [
-        Text(
-          count.toString(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
-        ),
-        Container(
-          margin: const EdgeInsets.only(top: 4),
-          height: 3,
-          width: 20,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      ],
-    );
-  }
+/// Full-width orange card that opens the submit ticket form.
+class _SubmitTicketCard extends StatelessWidget {
+  const _SubmitTicketCard();
 
-  Widget _buildRecentTicketCard(Ticket ticket) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.accent,
+      borderRadius: AppRadius.brLg,
       child: InkWell(
+        borderRadius: AppRadius.brLg,
         onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/customer/ticket_details',
-            arguments: ticket.id,
-          );
+          Navigator.pushNamed(context, '/customer/submit');
         },
-        borderRadius: BorderRadius.circular(15),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.s4),
           child: Row(
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: AppColors.surfaceCard,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.add_task_rounded,
+                  color: AppColors.accentStrong,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ticket.id,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[400],
-                        fontWeight: FontWeight.bold,
+                      'Submit New Ticket',
+                      style: AppText.heading.copyWith(
+                        color: AppColors.onPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
                     Text(
-                      ticket.title,
-                      style: CancelledStatus.titleStyle(
-                        const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF333333),
-                        ),
-                        ticket.status == TicketStatus.cancelled
-                            ? CancelledStatus.value
-                            : null,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${ticket.createdAt.day}/${ticket.createdAt.month}/${ticket.createdAt.year}',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                      'Need help? Report an issue now.',
+                      style: AppText.body.copyWith(color: AppColors.onPrimary),
                     ),
                   ],
                 ),
               ),
-              _buildStatusBadge(ticket.status),
+              const Icon(Icons.chevron_right, color: AppColors.onPrimary),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildStatusBadge(TicketStatus status) {
-    Color color;
-    switch (status) {
-      case TicketStatus.cancelled:
-        color = CancelledStatus.textColor;
-        break;
-      case TicketStatus.newTicket:
-        color = Colors.orange;
-        break;
-      case TicketStatus.assigned:
-        color = Colors.blue;
-        break;
-      case TicketStatus.inProgress:
-        color = Colors.purple;
-        break;
-      case TicketStatus.resolved:
-        color = Colors.green;
-        break;
-      case TicketStatus.closed:
-        color = Colors.grey;
-        break;
-    }
+/// The ticket currently being worked on: status, progress and technician.
+/// The whole card opens the ticket details, like "View Details" does.
+class _ActiveTicketCard extends StatelessWidget {
+  final Ticket ticket;
+  final String? technicianName;
+
+  const _ActiveTicketCard({required this.ticket, this.technicianName});
+
+  void _open(BuildContext context) {
+    Navigator.pushNamed(
+      context,
+      '/customer/ticket_details',
+      arguments: ticket.id,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _statusValue(ticket.status);
+    final name = technicianName;
+    final hasTechnician = name != null && name.isNotEmpty;
+
+    final track = TextButton.icon(
+      onPressed: () => _open(context),
+      iconAlignment: IconAlignment.end,
+      icon: const Icon(Icons.chevron_right),
+      label: const Text('Track'),
+    );
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: status == TicketStatus.cancelled
-            ? CancelledStatus.backgroundColor
-            : color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
       ),
-      child: Text(
-        status.displayName.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: AppRadius.brLg,
+          onTap: () => _open(context),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.s4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Active Ticket',
+                        style: AppText.bodyStrong.copyWith(
+                          color: AppColors.inkMuted,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.s2),
+                    StatusBadge(status: status),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s3),
+                Text(
+                  ticket.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.heading.copyWith(color: AppColors.ink),
+                ),
+                Text(
+                  ticket.id,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(color: AppColors.inkFaint),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+                HorizontalStatusStepper(status: status),
+                const SizedBox(height: AppSpacing.s3),
+                const Divider(height: 1, thickness: 1, color: AppColors.border),
+                const SizedBox(height: AppSpacing.s2),
+                if (hasTechnician)
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryTint,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.person_outline,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.s3),
+                      Expanded(
+                        child: Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.bodyStrong.copyWith(
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
+                      track,
+                    ],
+                  )
+                else
+                  Align(alignment: Alignment.centerRight, child: track),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        children: [
-          const SizedBox(height: 40),
-          Icon(Icons.assignment_outlined, size: 60, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text(
-            "No tickets found",
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontWeight: FontWeight.bold,
+/// Opens the same Speed Test screen as the Profile tab.
+class _SpeedTestTile extends StatelessWidget {
+  const _SpeedTestTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: AppRadius.brLg,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SpeedTestScreen()),
+            );
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.s4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryTint,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.speed, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: AppSpacing.s3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Speed Test',
+                          style: AppText.bodyStrong.copyWith(
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        Text(
+                          'Test your internet',
+                          style: AppText.caption.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: AppColors.inkFaint),
+                ],
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
