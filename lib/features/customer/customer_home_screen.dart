@@ -6,10 +6,12 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../models/ticket.dart';
 import '../../utils/enums.dart';
+import '../../utils/greeting.dart';
 import '../../widgets/header_icon_badge.dart';
 import '../../widgets/home_header.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../widgets/status_badge.dart';
+import '../../widgets/status_style.dart';
 import '../../widgets/ticket_stub_pattern.dart';
 import 'speed_test_screen.dart';
 
@@ -24,10 +26,25 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
   // Full name from the user's profile (users/{uid}.fullName).
   String? _fullName;
 
+  // Created once (and again only on "Try Again"): a stream made inside build()
+  // would re-subscribe on every rebuild.
+  Stream<QuerySnapshot>? _ticketStream;
+
   @override
   void initState() {
     super.initState();
+    _createStream();
     _loadFullName();
+  }
+
+  void _createStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _ticketStream = FirebaseFirestore.instance
+        .collection('tickets')
+        .where('customerId', isEqualTo: uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
   }
 
   Future<void> _loadFullName() async {
@@ -91,6 +108,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
 
     final userName =
         _fullName ?? firebaseUser.email?.split('@').first ?? 'User';
+    final title =
+        '${timeOfDayGreeting(DateTime.now())}, ${userName.split(' ').first}';
 
     // Solid brand-blue status bar with light icons, so it reads as part of
     // the header. Only this tab changes the style; the others keep the theme's.
@@ -98,25 +117,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       value: AppTheme.statusBarOnPrimary,
       child: Scaffold(
         body: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('tickets')
-              .where('customerId', isEqualTo: firebaseUser.uid)
-              .orderBy('createdAt', descending: true)
-              .snapshots(),
+          stream: _ticketStream,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+            // Only the first load shows the spinner; once data has arrived a
+            // rebuild keeps showing it. The header stays visible meanwhile.
+            if (!snapshot.hasData &&
+                snapshot.connectionState == ConnectionState.waiting) {
+              return CustomerHomeFrame(
+                title: title,
+                body: const Center(child: CircularProgressIndicator()),
+              );
             }
 
             if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.s4),
-                  child: Text(
-                    'Error: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: AppText.body.copyWith(color: AppColors.cancelledFg),
-                  ),
+              return CustomerHomeFrame(
+                title: title,
+                body: CustomerHomeLoadError(
+                  onRetry: () => setState(_createStream),
                 ),
               );
             }
@@ -171,15 +188,102 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               }
             }
 
+            // The newest ticket (the query is ordered by createdAt, newest
+            // first), with its real creation date or none.
+            final docs = snapshot.data?.docs ?? const [];
+            final Ticket? lastTicket = tickets.isEmpty ? null : tickets.first;
+            DateTime? lastTicketDate;
+            if (docs.isNotEmpty) {
+              final created =
+                  (docs.first.data() as Map<String, dynamic>)['createdAt'];
+              if (created is Timestamp) lastTicketDate = created.toDate();
+            }
+
             return CustomerHomeContent(
-              title: 'Welcome, ${userName.split(' ').first}',
+              title: title,
               assignedCount: assignedCount,
               inProgressCount: inProgressCount,
               resolvedCount: resolvedCount,
               activeTicket: activeTicket,
               activeTechnicianName: activeTechnicianName,
+              lastTicket: lastTicket,
+              lastTicketDate: lastTicketDate,
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// The blue header with the stub pattern and the customer icon. The counters
+/// card, when given, overlaps its bottom edge.
+Widget _buildHeader(String title, {Widget? counters}) {
+  return HomeHeader(
+    title: title,
+    subtitle: 'Customer Portal',
+    background: const TicketStubPattern(),
+    trailing: const HeaderIconBadge(asset: 'assets/images/customer_icon.png'),
+    overlapChild: counters,
+  );
+}
+
+/// The header with [body] filling the space under it (loading and error).
+class CustomerHomeFrame extends StatelessWidget {
+  final String title;
+  final Widget body;
+
+  const CustomerHomeFrame({super.key, required this.title, required this.body});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildHeader(title),
+        Expanded(child: body),
+      ],
+    );
+  }
+}
+
+class CustomerHomeLoadError extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const CustomerHomeLoadError({super.key, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.s6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: const BoxDecoration(
+                  color: AppColors.cancelledBg,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.error_outline_rounded,
+                  size: 32,
+                  color: AppColors.cancelledFg,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            Text(
+              'Could not load your tickets.',
+              textAlign: TextAlign.center,
+              style: AppText.heading.copyWith(color: AppColors.ink),
+            ),
+            const SizedBox(height: AppSpacing.s2),
+            TextButton(onPressed: onRetry, child: const Text('Try Again')),
+          ],
         ),
       ),
     );
@@ -217,6 +321,11 @@ class CustomerHomeContent extends StatelessWidget {
   final Ticket? activeTicket;
   final String? activeTechnicianName;
 
+  /// The newest ticket, shown in the "no active tickets" layout, and its
+  /// creation date when the ticket has one.
+  final Ticket? lastTicket;
+  final DateTime? lastTicketDate;
+
   const CustomerHomeContent({
     super.key,
     required this.title,
@@ -225,6 +334,8 @@ class CustomerHomeContent extends StatelessWidget {
     required this.resolvedCount,
     this.activeTicket,
     this.activeTechnicianName,
+    this.lastTicket,
+    this.lastTicketDate,
   });
 
   @override
@@ -239,14 +350,9 @@ class CustomerHomeContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          HomeHeader(
-            title: title,
-            subtitle: 'Customer Portal',
-            background: const TicketStubPattern(),
-            trailing: const HeaderIconBadge(
-              asset: 'assets/images/customer_icon.png',
-            ),
-            overlapChild: _CountersCard(
+          _buildHeader(
+            title,
+            counters: _CountersCard(
               counters: [
                 _Counter('Assigned', assignedCount, AppColors.assignedFg),
                 _Counter('In Progress', inProgressCount, AppColors.progressFg),
@@ -261,17 +367,28 @@ class CustomerHomeContent extends StatelessWidget {
               children: [
                 const SizedBox(height: AppSpacing.s4),
 
-                // Active Ticket
                 if (activeTicket != null) ...[
+                  // Active Ticket, then the primary action.
                   _ActiveTicketCard(
                     ticket: activeTicket!,
                     technicianName: activeTechnicianName,
                   ),
                   const SizedBox(height: AppSpacing.s4),
+                  const _SubmitTicketCard(),
+                ] else ...[
+                  // Nothing active: say so, keep the primary action, then the
+                  // newest ticket (if the customer has any).
+                  const _NoActiveTicketsCard(),
+                  const SizedBox(height: AppSpacing.s3),
+                  const _SubmitTicketCard(),
+                  if (lastTicket != null) ...[
+                    const SizedBox(height: AppSpacing.s3),
+                    _LastTicketCard(
+                      ticket: lastTicket!,
+                      createdAt: lastTicketDate,
+                    ),
+                  ],
                 ],
-
-                // Submit New Ticket (primary action)
-                const _SubmitTicketCard(),
 
                 const SizedBox(height: AppSpacing.s3),
 
@@ -354,47 +471,216 @@ class _SubmitTicketCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.accent,
-      borderRadius: AppRadius.brLg,
-      child: InkWell(
+    return Semantics(
+      button: true,
+      label: 'Submit New Ticket. Need help? Report an issue now',
+      excludeSemantics: true,
+      child: Material(
+        // accentStrong, not accent: white text needs the darker orange.
+        color: AppColors.accent,
         borderRadius: AppRadius.brLg,
-        onTap: () {
-          Navigator.pushNamed(context, '/customer/submit');
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.s4),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
+        child: InkWell(
+          borderRadius: AppRadius.brLg,
+          onTap: () {
+            Navigator.pushNamed(context, '/customer/submit');
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.s4),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: AppColors.surfaceCard,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.add, color: AppColors.accentStrong),
+                ),
+                const SizedBox(width: AppSpacing.s3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Submit New Ticket',
+                        style: AppText.heading.copyWith(
+                          color: AppColors.onPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Need help? Report an issue now',
+                        style: AppText.body.copyWith(
+                          color: AppColors.onPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: AppColors.onPrimary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when no ticket is being worked on.
+class _NoActiveTicketsCard extends StatelessWidget {
+  const _NoActiveTicketsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return MergeSemantics(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.s4,
+          AppSpacing.s6,
+          AppSpacing.s4,
+          AppSpacing.s6,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: AppRadius.brLg,
+          boxShadow: AppShadows.card,
+        ),
+        child: Column(
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 64,
+                height: 64,
                 decoration: const BoxDecoration(
-                  color: AppColors.surfaceCard,
+                  color: AppColors.primaryTint,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.add, color: AppColors.accentStrong),
-              ),
-              const SizedBox(width: AppSpacing.s3),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Submit New Ticket',
-                      style: AppText.heading.copyWith(
-                        color: AppColors.onPrimary,
-                      ),
-                    ),
-                    Text(
-                      'Need help? Report an issue now.',
-                      style: AppText.body.copyWith(color: AppColors.onPrimary),
-                    ),
-                  ],
+                child: const Icon(
+                  Icons.verified_user_outlined,
+                  size: 32,
+                  color: AppColors.primary,
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppColors.onPrimary),
-            ],
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            Text(
+              'No active tickets',
+              textAlign: TextAlign.center,
+              style: AppText.heading.copyWith(color: AppColors.ink),
+            ),
+            const SizedBox(height: AppSpacing.s1),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 280),
+              child: Text(
+                'Everything is running smoothly. Having a problem with your service? Tell us and we will sort it out.',
+                textAlign: TextAlign.center,
+                style: AppText.body.copyWith(color: AppColors.inkMuted),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The newest ticket, when none is active. The whole card opens its details.
+class _LastTicketCard extends StatelessWidget {
+  final Ticket ticket;
+
+  /// When the ticket was created; null when it has no creation time.
+  final DateTime? createdAt;
+
+  const _LastTicketCard({required this.ticket, required this.createdAt});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _statusValue(ticket.status);
+    final date = createdAt == null
+        ? null
+        : '${createdAt!.day.toString().padLeft(2, '0')}/'
+              '${createdAt!.month.toString().padLeft(2, '0')}/'
+              '${createdAt!.year}';
+
+    return Semantics(
+      button: true,
+      label:
+          'Last ticket: ${ticket.title}, ${statusStyle(status).label}${date == null ? '' : ', $date'}',
+      excludeSemantics: true,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: AppRadius.brLg,
+          boxShadow: AppShadows.card,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: AppRadius.brLg,
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/customer/ticket_details',
+                arguments: ticket.id,
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.s4,
+                vertical: AppSpacing.s3,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Last ticket',
+                          style: AppText.bodyStrong.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.s2),
+                      StatusBadge(status: status),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.s1),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          ticket.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.heading.copyWith(color: AppColors.ink),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: AppColors.primary),
+                    ],
+                  ),
+                  if (date != null)
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 16,
+                          color: AppColors.inkFaint,
+                        ),
+                        const SizedBox(width: AppSpacing.s1),
+                        Text(
+                          date,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.inkFaint,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
