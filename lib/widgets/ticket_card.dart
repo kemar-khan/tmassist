@@ -20,6 +20,10 @@ class TicketCard extends StatelessWidget {
   final VoidCallback? onTap;
   final String actionLabel;
 
+  /// Replaces the "View Details" label and chevron on the right of the footer
+  /// (for example a compact action button). It should be at least 44dp tall.
+  final Widget? action;
+
   const TicketCard({
     super.key,
     required this.id,
@@ -29,6 +33,7 @@ class TicketCard extends StatelessWidget {
     required this.dateText,
     this.onTap,
     this.actionLabel = 'View Details',
+    this.action,
   });
 
   bool get _isCancelled => status.trim().toUpperCase() == 'CANCELLED';
@@ -109,17 +114,21 @@ class TicketCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: AppSpacing.s2),
-                      Text(
-                        actionLabel,
-                        style: AppText.bodyStrong.copyWith(
+                      if (action != null)
+                        action!
+                      else ...[
+                        Text(
+                          actionLabel,
+                          style: AppText.bodyStrong.copyWith(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 20,
                           color: AppColors.primary,
                         ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right,
-                        size: 20,
-                        color: AppColors.primary,
-                      ),
+                      ],
                     ],
                   ),
                 ),

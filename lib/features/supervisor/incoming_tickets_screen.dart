@@ -1,70 +1,110 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../widgets/app_text_field.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/filter_chip_row.dart';
+import '../../widgets/ticket_card.dart';
+
+/// Asks the Tickets tab to select a status filter. [id] must change for every
+/// new request, so asking for the same [status] again applies it again.
+/// [status] is one of the chip values: 'All', 'NEW', 'ASSIGNED',
+/// 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'CANCELLED'.
+class TicketFilterRequest {
+  final String status;
+  final int id;
+
+  const TicketFilterRequest({required this.status, required this.id});
+}
 
 class IncomingTicketsScreen extends StatefulWidget {
-  const IncomingTicketsScreen({super.key});
+  /// When this changes (a different [TicketFilterRequest.id]), the screen
+  /// selects the requested status and clears the search text.
+  final TicketFilterRequest? filterRequest;
+
+  const IncomingTicketsScreen({super.key, this.filterRequest});
 
   @override
   State<IncomingTicketsScreen> createState() => _IncomingTicketsScreenState();
 }
 
 class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
+  // The stored values the filter works on, in the order the chips appear.
+  static const List<String> _filterKeys = [
+    'All',
+    'NEW',
+    'ASSIGNED',
+    'IN_PROGRESS',
+    'RESOLVED',
+    'CLOSED',
+    'CANCELLED',
+  ];
+
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
   String _selectedFilter = "All";
+
+  // Bumped by every filter request, so the chip row scrolls the selected chip
+  // into view even when the requested status is already selected.
+  int _revealCount = 0;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(IncomingTicketsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final request = widget.filterRequest;
+    if (request == null || request.id == oldWidget.filterRequest?.id) return;
+
+    setState(() {
+      _selectedFilter = request.status;
+      _searchController.clear();
+      _searchQuery = "";
+      _revealCount++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text(
-          'Incoming Tickets',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
-        elevation: 0,
+        title: const Text('Incoming Tickets'),
+        automaticallyImplyLeading: false,
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: const Color(0xFF005CAB),
-            child: Column(
-              children: [
-                TextField(
-                  onChanged: (val) => setState(() => _searchQuery = val),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: "Search by ID or Title...",
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    prefixIcon: const Icon(Icons.search, color: Colors.white),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.15),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip('All'),
-                      _buildFilterChip('NEW'),
-                      _buildFilterChip('ASSIGNED'),
-                      _buildFilterChip('IN_PROGRESS'),
-                      _buildFilterChip('RESOLVED'),
-                      _buildFilterChip('CANCELLED'),
-                    ],
-                  ),
-                ),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.s4,
+              AppSpacing.s4,
+              AppSpacing.s4,
+              0,
             ),
+            child: AppTextField(
+              label: '',
+              controller: _searchController,
+              onChanged: (val) => setState(() => _searchQuery = val),
+              hint: "Search by ID or Title...",
+              prefixIcon: Icons.search,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.s3),
+          FilterChipRow(
+            labels: [for (final key in _filterKeys) _formatStatusLabel(key)],
+            selected: _formatStatusLabel(_selectedFilter),
+            revealRequest: _revealCount,
+            onSelected: (label) {
+              final key = _filterKeys.firstWhere(
+                (k) => _formatStatusLabel(k) == label,
+              );
+              setState(() => _selectedFilter = key);
+            },
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
@@ -80,10 +120,13 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
                 if (snapshot.hasError) {
                   return Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppSpacing.s4),
                       child: Text(
                         'Error: ${snapshot.error}',
                         textAlign: TextAlign.center,
+                        style: AppText.body.copyWith(
+                          color: AppColors.cancelledFg,
+                        ),
                       ),
                     ),
                   );
@@ -113,9 +156,20 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
                   return _buildEmptyState();
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                return ListView.separated(
+                  // The floating nav bar sits over the bottom of the screen.
+                  // Inside a Scaffold with extendBody, the body's bottom
+                  // padding already includes the bar and the device's safe
+                  // area, so only a gap is added here.
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.s4,
+                    AppSpacing.s4,
+                    AppSpacing.s4,
+                    MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+                  ),
                   itemCount: filteredTickets.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.s3),
                   itemBuilder: (context, index) {
                     final doc = filteredTickets[index];
                     final data = doc.data() as Map<String, dynamic>;
@@ -126,35 +180,6 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String value) {
-    final bool isSelected = _selectedFilter == value;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(
-          _formatStatusLabel(value),
-          style: TextStyle(
-            color: isSelected ? const Color(0xFF005CAB) : Color(0xFF005CAB),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        selected: isSelected,
-        onSelected: (_) {
-          setState(() => _selectedFilter = value);
-        },
-        selectedColor: Colors.white,
-        backgroundColor: Colors.white.withOpacity(0.15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: isSelected ? Colors.white : Colors.white.withOpacity(0.25),
-          ),
-        ),
       ),
     );
   }
@@ -175,155 +200,26 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
       formattedDate = '${date.day}/${date.month}/${date.year}';
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.pushNamed(
-              context,
-              '/supervisor/ticket',
-              arguments: ticketId,
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildStatusBadge(status),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  ticketId,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[400],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  title,
-                  style: CancelledStatus.titleStyle(
-                    const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
-                    ),
-                    status,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    height: 1.4,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Spacer(),
-                    if (status == 'NEW')
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pushNamed(
-                            context,
-                            '/supervisor/assign',
-                            arguments: ticketId,
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF6600),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: const Text("Assign Now"),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge(String status) {
-    Color bgColor;
-    Color textColor;
-    String label = _formatStatusLabel(status).toUpperCase();
-
-    switch (status) {
-      case 'NEW':
-        bgColor = Colors.red.withOpacity(0.1);
-        textColor = Colors.red;
-        break;
-      case 'ASSIGNED':
-        bgColor = Colors.blue.withOpacity(0.1);
-        textColor = Colors.blue;
-        break;
-      case 'IN_PROGRESS':
-        bgColor = Colors.orange.withOpacity(0.1);
-        textColor = Colors.orange;
-        break;
-      case 'RESOLVED':
-        bgColor = Colors.green.withOpacity(0.1);
-        textColor = Colors.green;
-        break;
-      case 'CANCELLED':
-        bgColor = CancelledStatus.backgroundColor;
-        textColor = CancelledStatus.textColor;
-        break;
-      default:
-        bgColor = Colors.grey.withOpacity(0.1);
-        textColor = Colors.grey;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+    return TicketCard(
+      id: ticketId,
+      title: title,
+      description: description,
+      status: status,
+      dateText: formattedDate,
+      onTap: () {
+        Navigator.pushNamed(context, '/supervisor/ticket', arguments: ticketId);
+      },
+      action: status == 'NEW'
+          ? _AssignNowButton(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  '/supervisor/assign',
+                  arguments: ticketId,
+                );
+              },
+            )
+          : null,
     );
   }
 
@@ -337,6 +233,8 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
         return 'In Progress';
       case 'RESOLVED':
         return 'Resolved';
+      case 'CLOSED':
+        return 'Closed';
       case 'CANCELLED':
         return CancelledStatus.label;
       case 'All':
@@ -355,31 +253,49 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
           "There are no ${_formatStatusLabel(_selectedFilter).toLowerCase()} tickets at the moment.";
     }
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.assignment_turned_in_outlined,
-            size: 80,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            "All caught up!",
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[500],
+    return EmptyState(
+      icon: Icons.assignment_turned_in_outlined,
+      title: "All caught up!",
+      subtitle: message,
+    );
+  }
+}
+
+/// Compact "Assign Now" pill for NEW tickets. The visible pill is small; the
+/// tap area around it is 44dp high.
+class _AssignNowButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _AssignNowButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      excludeSemantics: true,
+      label: 'Assign Now',
+      child: SizedBox(
+        height: 44,
+        child: InkWell(
+          borderRadius: AppRadius.brSm,
+          onTap: onPressed,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.s3,
+                vertical: AppSpacing.s1,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.primaryTint,
+                borderRadius: AppRadius.brSm,
+              ),
+              child: Text(
+                'Assign Now',
+                style: AppText.bodyStrong.copyWith(color: AppColors.primary),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: TextStyle(color: Colors.grey[400]),
-            textAlign: TextAlign.center,
-          ),
-        ],
+        ),
       ),
     );
   }

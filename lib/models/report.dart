@@ -49,5 +49,6 @@ class Report {
   }
 
   @override
-  String toString() => 'Report(id: $id, createdBy: $createdBy, tickets: ${ticketIds.length})';
+  String toString() =>
+      'Report(id: $id, createdBy: $createdBy, tickets: ${ticketIds.length})';
 }

@@ -1,8 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../../core/constants/service_areas.dart';
+import 'package:flutter/services.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/header_icon_badge.dart';
+import '../../widgets/home_header.dart';
+import '../../widgets/status_badge.dart';
+import '../../widgets/ticket_stub_pattern.dart';
 import 'incoming_tickets_screen.dart';
 
 class SupervisorHomeScreen extends StatefulWidget {
@@ -10,7 +17,16 @@ class SupervisorHomeScreen extends StatefulWidget {
   /// is used outside the tab bar) it opens the Incoming Tickets screen instead.
   final VoidCallback? onViewAllTickets;
 
-  const SupervisorHomeScreen({super.key, this.onViewAllTickets});
+  /// Called with a Tickets tab status value ('All', 'NEW', 'RESOLVED', ...)
+  /// to open the Tickets tab with that filter selected. When null, the rows
+  /// fall back to [onViewAllTickets] (no filter).
+  final ValueChanged<String>? onOpenTicketsWithStatus;
+
+  const SupervisorHomeScreen({
+    super.key,
+    this.onViewAllTickets,
+    this.onOpenTicketsWithStatus,
+  });
 
   @override
   State<SupervisorHomeScreen> createState() => _SupervisorHomeScreenState();
@@ -18,6 +34,28 @@ class SupervisorHomeScreen extends StatefulWidget {
 
 class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
   String? _selectedCategory;
+
+  void _openTickets(String status) {
+    final openWithStatus = widget.onOpenTicketsWithStatus;
+    if (openWithStatus != null) {
+      openWithStatus(status);
+    } else {
+      _goToTickets();
+    }
+  }
+
+  void _goToTickets() {
+    final goToTickets = widget.onViewAllTickets;
+    if (goToTickets != null) {
+      goToTickets();
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const IncomingTicketsScreen()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final firebaseUser = FirebaseAuth.instance.currentUser;
@@ -26,934 +64,157 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(firebaseUser.uid)
-          .snapshots(),
-      builder: (context, userSnapshot) {
-        final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
-        final supervisorName =
-            (userData?['fullName'] ?? firebaseUser.email ?? 'Supervisor')
-                .toString();
+    // Solid brand-blue status bar with light icons, so it reads as part of the
+    // header. Only this tab changes the style; the others keep the theme's.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: AppTheme.statusBarOnPrimary,
+      child: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(firebaseUser.uid)
+            .snapshots(),
+        builder: (context, userSnapshot) {
+          final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+          final supervisorName =
+              (userData?['fullName'] ?? firebaseUser.email ?? 'Supervisor')
+                  .toString();
 
-        return StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('tickets')
-              .orderBy('createdAt', descending: true)
-              .snapshots(),
-          builder: (context, ticketSnapshot) {
-            if (ticketSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('tickets')
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
+            builder: (context, ticketSnapshot) {
+              if (ticketSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
 
-            if (ticketSnapshot.hasError) {
-              return Scaffold(
-                body: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Error: ${ticketSnapshot.error}',
-                      textAlign: TextAlign.center,
+              if (ticketSnapshot.hasError) {
+                return Scaffold(
+                  body: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.s4),
+                      child: Text(
+                        'Error: ${ticketSnapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: AppText.body.copyWith(
+                          color: AppColors.cancelledFg,
+                        ),
+                      ),
                     ),
+                  ),
+                );
+              }
+
+              // CANCELLED tickets are left out of the totals, category cards,
+              // weekly chart and recent list (they stay visible in the Tickets tab).
+              final docs = (ticketSnapshot.data?.docs ?? []).where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return !CancelledStatus.isCancelled(data['status']);
+              });
+
+              final tickets = docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return {
+                  'id': doc.id,
+                  'title': (data['title'] ?? '').toString(),
+                  'status': (data['status'] ?? 'NEW').toString().toUpperCase(),
+                  'technicianId': data['technicianId'],
+                  'technicianName': (data['technicianName'] ?? '').toString(),
+                  'createdAt': data['createdAt'],
+                  'area': (data['area'] ?? '').toString(),
+                  'category': (data['category'] ?? '').toString(),
+                };
+              }).toList();
+
+              final totalTickets = tickets.length;
+              final newTickets = tickets
+                  .where((t) => t['status'] == 'NEW')
+                  .length;
+              final assignedTickets = tickets
+                  .where((t) => t['status'] == 'ASSIGNED')
+                  .length;
+              final inProgressTickets = tickets
+                  .where((t) => t['status'] == 'IN_PROGRESS')
+                  .length;
+              final resolvedTickets = tickets
+                  .where((t) => t['status'] == 'RESOLVED')
+                  .length;
+              final closedTickets = tickets
+                  .where((t) => t['status'] == 'CLOSED')
+                  .length;
+              final weeklyCounts = _getWeeklyTicketCounts(tickets);
+              final maxWeeklyCount = weeklyCounts.values.isEmpty
+                  ? 0
+                  : weeklyCounts.values.reduce((a, b) => a > b ? a : b);
+              final weeklyFactors = {
+                for (final e in weeklyCounts.entries)
+                  e.key: _getBarHeightFactor(e.value, maxWeeklyCount),
+              };
+
+              const categoryKeys = ['Network', 'Hardware', 'Software', 'Other'];
+
+              final categoryTotals = {
+                for (final c in categoryKeys)
+                  c: tickets.where((t) => _categoryOf(t) == c).length,
+              };
+
+              final filteredTickets = _selectedCategory == null
+                  ? tickets
+                  : tickets
+                        .where((t) => _categoryOf(t) == _selectedCategory)
+                        .toList();
+              final isFiltering = _selectedCategory != null;
+              final shownLimit = isFiltering ? 10 : 3;
+
+              return Scaffold(
+                body: SupervisorHomeContent(
+                  supervisorName: supervisorName,
+                  totalTickets: totalTickets,
+                  newTickets: newTickets,
+                  assignedTickets: assignedTickets,
+                  inProgressTickets: inProgressTickets,
+                  resolvedTickets: resolvedTickets,
+                  closedTickets: closedTickets,
+                  weeklyCounts: weeklyCounts,
+                  weeklyFactors: weeklyFactors,
+                  categoryKeys: categoryKeys,
+                  categoryTotals: categoryTotals,
+                  selectedCategory: _selectedCategory,
+                  filteredCount: filteredTickets.length,
+                  recentTickets: filteredTickets.length > shownLimit
+                      ? filteredTickets.sublist(0, shownLimit)
+                      : filteredTickets,
+                  onViewAll: () => _openTickets('All'),
+                  onOpenNew: () => _openTickets('NEW'),
+                  onOpenAwaitingSignOff: () => _openTickets('RESOLVED'),
+                  onCategoryTap: (cat) => setState(
+                    () => _selectedCategory = _selectedCategory == cat
+                        ? null
+                        : cat,
+                  ),
+                  onClearFilter: () => setState(() {
+                    _selectedCategory = null;
+                  }),
+                  onOpenTicket: (ticketId) => Navigator.pushNamed(
+                    context,
+                    '/supervisor/ticket',
+                    arguments: ticketId,
                   ),
                 ),
               );
-            }
-
-            // CANCELLED tickets are left out of the totals, category cards,
-            // weekly chart and recent list (they stay visible in the Tickets tab).
-            final docs = (ticketSnapshot.data?.docs ?? []).where((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return !CancelledStatus.isCancelled(data['status']);
-            });
-
-            final tickets = docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              return {
-                'id': doc.id,
-                'title': (data['title'] ?? '').toString(),
-                'status': (data['status'] ?? 'NEW').toString().toUpperCase(),
-                'technicianId': data['technicianId'],
-                'technicianName': (data['technicianName'] ?? '').toString(),
-                'createdAt': data['createdAt'],
-                'area': (data['area'] ?? '').toString(),
-                'category': (data['category'] ?? '').toString(),
-              };
-            }).toList();
-
-            final totalTickets = tickets.length;
-            final newTickets = tickets
-                .where((t) => t['status'] == 'NEW')
-                .length;
-            final assignedTickets = tickets
-                .where((t) => t['status'] == 'ASSIGNED')
-                .length;
-            final inProgressTickets = tickets
-                .where((t) => t['status'] == 'IN_PROGRESS')
-                .length;
-            final resolvedTickets = tickets
-                .where((t) => t['status'] == 'RESOLVED')
-                .length;
-            final closedTickets = tickets
-                .where((t) => t['status'] == 'CLOSED')
-                .length;
-            ;
-            final weeklyCounts = _getWeeklyTicketCounts(tickets);
-            final maxWeeklyCount = weeklyCounts.values.isEmpty
-                ? 0
-                : weeklyCounts.values.reduce((a, b) => a > b ? a : b);
-
-            const categoryKeys = ['Network', 'Hardware', 'Software', 'Other'];
-
-            final categoryTotals = {
-              for (final c in categoryKeys)
-                c: tickets.where((t) => _categoryOf(t) == c).length,
-            };
-
-            final filteredTickets = _selectedCategory == null
-                ? tickets
-                : tickets
-                      .where((t) => _categoryOf(t) == _selectedCategory)
-                      .toList();
-            final isFiltering = _selectedCategory != null;
-
-            return Scaffold(
-              backgroundColor: const Color(0xFFF5F5F5),
-              body: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Header + Notification Icon
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(20, 60, 20, 30),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF005CAB),
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(30),
-                          bottomRight: Radius.circular(30),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Welcome back,",
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                supervisorName + " | Supervisor",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.person,
-                                color: Colors.white,
-                              ),
-                              onPressed: () {
-                                // Notifications
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // 2. KPI Summary
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Overview",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Top row of KPIs
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildKPICard(
-                                  "Total Tickets",
-                                  totalTickets,
-                                  Icons.confirmation_number_outlined,
-                                  Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _buildKPICard(
-                                  "New Complaints",
-                                  newTickets,
-                                  Icons.new_releases_outlined,
-                                  Colors.red,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Bottom row of KPIs
-                          // Bottom row of KPIs
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildKPICard(
-                                  "Assigned",
-                                  assignedTickets,
-                                  Icons.pending_actions,
-                                  Colors.blue,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildKPICard(
-                                  "In Progress",
-                                  inProgressTickets,
-                                  Icons.engineering_outlined,
-                                  Colors.purple,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildKPICard(
-                                  "Resolved",
-                                  resolvedTickets,
-                                  Icons.check_circle_outline,
-                                  Colors.green,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildKPICard(
-                                  "Closed",
-                                  closedTickets,
-                                  Icons.lock_outline,
-                                  Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // 3. Quick View Charts
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Quick Analytics",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Status Distribution (Horizontal Bar)
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Status Distribution",
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                if (totalTickets > 0)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Row(
-                                      children: [
-                                        if (newTickets > 0)
-                                          Expanded(
-                                            flex: newTickets,
-                                            child: Container(
-                                              height: 12,
-                                              color: Colors.red,
-                                            ),
-                                          ),
-                                        if (assignedTickets > 0)
-                                          Expanded(
-                                            flex: assignedTickets,
-                                            child: Container(
-                                              height: 12,
-                                              color: Colors.blue,
-                                            ),
-                                          ),
-                                        if (inProgressTickets > 0)
-                                          Expanded(
-                                            flex: inProgressTickets,
-                                            child: Container(
-                                              height: 12,
-                                              color: Colors.purple,
-                                            ),
-                                          ),
-                                        if (resolvedTickets > 0)
-                                          Expanded(
-                                            flex: resolvedTickets,
-                                            child: Container(
-                                              height: 12,
-                                              color: Colors.green,
-                                            ),
-                                          ),
-                                        if (closedTickets > 0)
-                                          Expanded(
-                                            flex: closedTickets,
-                                            child: Container(
-                                              height: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  )
-                                else
-                                  Container(
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[300],
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-
-                                const SizedBox(height: 16),
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 8,
-                                  children: [
-                                    _buildLegendItem("New", Colors.red),
-                                    _buildLegendItem("Assigned", Colors.blue),
-                                    _buildLegendItem(
-                                      "In Progress",
-                                      Colors.purple,
-                                    ),
-                                    _buildLegendItem("Resolved", Colors.green),
-                                    _buildLegendItem("Closed", Colors.grey),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Ticket Trends (Mock Bar Chart)
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      "Weekly Ticket Volume",
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.bar_chart_rounded,
-                                      color: Colors.grey[400],
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 24),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    _buildTrendBar(
-                                      "Mon",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Mon']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                    _buildTrendBar(
-                                      "Tue",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Tue']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                    _buildTrendBar(
-                                      "Wed",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Wed']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                    _buildTrendBar(
-                                      "Thu",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Thu']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                    _buildTrendBar(
-                                      "Fri",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Fri']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                    _buildTrendBar(
-                                      "Sat",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Sat']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                    _buildTrendBar(
-                                      "Sun",
-                                      _getBarHeightFactor(
-                                        weeklyCounts['Sun']!,
-                                        maxWeeklyCount,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-                    // Tickets by Location
-                    _buildCategoryOverview(categoryKeys, categoryTotals),
-                    const SizedBox(height: 32),
-
-                    // 4. Recent Tickets
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                "Recent Tickets",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF333333),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  final goToTickets = widget.onViewAllTickets;
-                                  if (goToTickets != null) {
-                                    goToTickets();
-                                  } else {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const IncomingTicketsScreen(),
-                                      ),
-                                    );
-                                  }
-                                },
-                                child: const Text(
-                                  "View All",
-                                  style: TextStyle(color: Color(0xFF005CAB)),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-
-                          if (isFiltering)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Showing: $_selectedCategory (${filteredTickets.length})',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => setState(() {
-                                      _selectedCategory = null;
-                                    }),
-                                    child: const Text(
-                                      'Clear',
-                                      style: TextStyle(
-                                        color: Color(0xFF005CAB),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (filteredTickets.isEmpty)
-                            const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(32.0),
-                                child: Text("No tickets found."),
-                              ),
-                            )
-                          else
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              padding: const EdgeInsets.only(bottom: 40),
-                              itemCount:
-                                  filteredTickets.length >
-                                      (isFiltering ? 10 : 5)
-                                  ? (isFiltering ? 10 : 5)
-                                  : filteredTickets.length,
-                              itemBuilder: (context, index) {
-                                return _buildRecentTicketCard(
-                                  context,
-                                  filteredTickets[index],
-                                );
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+            },
+          );
+        },
+      ),
     );
   }
 
   String _categoryOf(Map<String, dynamic> t) {
     final c = (t['category'] ?? '').toString();
     return const ['Network', 'Hardware', 'Software'].contains(c) ? c : 'Other';
-  }
-
-  Widget _buildCategoryOverview(
-    List<String> categoryKeys,
-    Map<String, int> categoryTotals,
-  ) {
-    const blue = Color(0xFF005CAB);
-    const icons = {
-      'Network': Icons.wifi_rounded,
-      'Hardware': Icons.router_outlined,
-      'Software': Icons.settings_applications_outlined,
-      'Other': Icons.more_horiz_rounded,
-    };
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Tickets by Category',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF333333),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Tap a card to filter the ticket list below.',
-            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: categoryKeys.map((cat) {
-              final selected = _selectedCategory == cat;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: cat == categoryKeys.last ? 0 : 8,
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => setState(
-                      () => _selectedCategory = selected ? null : cat,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: selected ? blue.withOpacity(0.08) : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: selected ? blue : Colors.transparent,
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(icons[cat], color: blue, size: 22),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${categoryTotals[cat]}',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            cat,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-  // --- Helper UI Methods ---
-
-  Widget _buildKPICard(String title, int count, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border(bottom: BorderSide(color: color, width: 3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 24),
-              Text(
-                count.toString(),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF333333),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Color(0xFF555555)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTrendBar(String day, double heightFactor) {
-    return Column(
-      children: [
-        Container(
-          width: 12,
-          height: 100 * heightFactor,
-          decoration: BoxDecoration(
-            color: const Color(
-              0xFF005CAB,
-            ).withOpacity(heightFactor < 0.5 ? 0.3 : 0.8),
-            borderRadius: BorderRadius.circular(6),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(day, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-      ],
-    );
-  }
-
-  Widget _buildRecentTicketCard(
-    BuildContext context,
-    Map<String, dynamic> ticket,
-  ) {
-    final assignedName = (ticket['technicianName'] ?? '').toString();
-    final technicianId = ticket['technicianId'];
-    final status = (ticket['status'] ?? 'NEW').toString().toUpperCase();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.pushNamed(
-              context,
-              '/supervisor/ticket',
-              arguments: ticket['id'],
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        (ticket['title'] ?? '').toString(),
-                        style: CancelledStatus.titleStyle(
-                          const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF333333),
-                          ),
-                          status,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildStatusBadge(status),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person_outline,
-                      size: 16,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        assignedName.isNotEmpty
-                            ? "Assigned: $assignedName"
-                            : technicianId != null
-                            ? "Assigned (ID: ${technicianId.toString().substring(0, 8)}...)"
-                            : "Unassigned",
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                      ),
-                    ),
-                    if (status == 'NEW')
-                      SizedBox(
-                        height: 30,
-                        child: TextButton(
-                          onPressed: () => Navigator.pushNamed(
-                            context,
-                            '/supervisor/assign',
-                            arguments: ticket['id'],
-                          ),
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFFFF6600),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            backgroundColor: const Color(0xFFFF6600),
-                          ),
-                          child: const Text(
-                            "Assign",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge(String status) {
-    Color color;
-    String label;
-
-    switch (status) {
-      case 'NEW':
-        color = Colors.red;
-        label = 'New';
-        break;
-      case 'ASSIGNED':
-        color = Colors.blue;
-        label = 'Assigned';
-        break;
-      case 'IN_PROGRESS':
-        color = Colors.purple;
-        label = 'In Progress';
-        break;
-      case 'RESOLVED':
-        color = Colors.green;
-        label = 'Resolved';
-        break;
-      case 'CLOSED':
-        color = Colors.grey;
-        label = 'Closed';
-        break;
-      case 'CANCELLED':
-        color = CancelledStatus.textColor;
-        label = CancelledStatus.label;
-        break;
-      default:
-        color = Colors.grey;
-        label = status;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: CancelledStatus.isCancelled(status)
-            ? CancelledStatus.backgroundColor
-            : color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
   }
 
   Map<String, int> _getWeeklyTicketCounts(List<Map<String, dynamic>> tickets) {
@@ -1010,5 +271,730 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
   double _getBarHeightFactor(int count, int maxCount) {
     if (maxCount == 0) return 0.1;
     return count / maxCount < 0.1 ? 0.1 : count / maxCount;
+  }
+}
+
+/// The dashboard body. Separate from [SupervisorHomeScreen] so it can be built
+/// without Firebase; the screen computes every value and passes it in.
+class SupervisorHomeContent extends StatelessWidget {
+  final String supervisorName;
+  final int totalTickets;
+  final int newTickets;
+  final int assignedTickets;
+  final int inProgressTickets;
+  final int resolvedTickets;
+  final int closedTickets;
+
+  /// Tickets created this week per day (keys Mon to Sun), and the bar height
+  /// factor (0 to 1) for each.
+  final Map<String, int> weeklyCounts;
+  final Map<String, double> weeklyFactors;
+
+  final List<String> categoryKeys;
+  final Map<String, int> categoryTotals;
+  final String? selectedCategory;
+
+  /// Number of tickets matching the filter (for the "Showing" line), and the
+  /// rows actually listed.
+  final int filteredCount;
+  final List<Map<String, dynamic>> recentTickets;
+
+  final VoidCallback onViewAll;
+  final VoidCallback onOpenNew;
+  final VoidCallback onOpenAwaitingSignOff;
+  final ValueChanged<String> onCategoryTap;
+  final VoidCallback onClearFilter;
+  final ValueChanged<String> onOpenTicket;
+
+  const SupervisorHomeContent({
+    super.key,
+    required this.supervisorName,
+    required this.totalTickets,
+    required this.newTickets,
+    required this.assignedTickets,
+    required this.inProgressTickets,
+    required this.resolvedTickets,
+    required this.closedTickets,
+    required this.weeklyCounts,
+    required this.weeklyFactors,
+    required this.categoryKeys,
+    required this.categoryTotals,
+    required this.selectedCategory,
+    required this.filteredCount,
+    required this.recentTickets,
+    required this.onViewAll,
+    required this.onOpenNew,
+    required this.onOpenAwaitingSignOff,
+    required this.onCategoryTap,
+    required this.onClearFilter,
+    required this.onOpenTicket,
+  });
+
+  static const _categoryIcons = {
+    'Network': Icons.wifi_rounded,
+    'Hardware': Icons.memory,
+    'Software': Icons.desktop_windows_outlined,
+    'Other': Icons.more_horiz_rounded,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      // The floating nav bar sits over the bottom of the screen. Inside a
+      // Scaffold with extendBody, the body's bottom padding already includes
+      // the bar and the device's safe area, so only a gap is added here.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          HomeHeader(
+            title: 'Welcome back,',
+            subtitle: '$supervisorName | Supervisor',
+            bottomOverlap: AppSpacing.s8 * 2,
+            background: const TicketStubPattern(),
+            trailing: const HeaderIconBadge(
+              asset: 'assets/images/supervisor_icon.png',
+            ),
+            overlapChild: _AttentionCard(
+              newCount: newTickets,
+              resolvedCount: resolvedTickets,
+              onOpenNew: onOpenNew,
+              onOpenAwaitingSignOff: onOpenAwaitingSignOff,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: AppSpacing.s6),
+                _buildOverview(),
+                const SizedBox(height: AppSpacing.s6),
+                _buildThisWeek(),
+                const SizedBox(height: AppSpacing.s6),
+                _buildCategories(),
+                const SizedBox(height: AppSpacing.s6),
+                _buildRecent(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title, {String? trailing}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: AppText.heading.copyWith(color: AppColors.ink),
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: AppSpacing.s2),
+          Text(
+            trailing,
+            style: AppText.caption.copyWith(color: AppColors.inkMuted),
+          ),
+        ],
+      ],
+    );
+  }
+
+  BoxDecoration get _cardDecoration => BoxDecoration(
+    color: AppColors.surfaceCard,
+    borderRadius: AppRadius.brLg,
+    boxShadow: AppShadows.card,
+  );
+
+  Widget _buildOverview() {
+    final rows = [
+      _OverviewData('New', newTickets, AppColors.chartNew),
+      _OverviewData('Assigned', assignedTickets, AppColors.chartAssigned),
+      _OverviewData('In Progress', inProgressTickets, AppColors.chartProgress),
+      _OverviewData('Resolved', resolvedTickets, AppColors.chartResolved),
+      _OverviewData('Closed', closedTickets, AppColors.chartClosed),
+    ];
+    final largest = rows.fold<int>(0, (m, r) => r.count > m ? r.count : m);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeader('Overview', trailing: '$totalTickets tickets in total'),
+        const SizedBox(height: AppSpacing.s3),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.s4,
+            vertical: AppSpacing.s1,
+          ),
+          decoration: _cardDecoration,
+          child: Column(
+            children: [
+              for (final row in rows) _OverviewRow(data: row, largest: largest),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThisWeek() {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final weekTotal = weeklyCounts.values.fold<int>(0, (a, b) => a + b);
+    final maxCount = weeklyCounts.values.fold<int>(0, (m, v) => v > m ? v : m);
+    // First day with the highest count; nothing is highlighted on an empty
+    // week.
+    final busiest = maxCount == 0
+        ? null
+        : days.firstWhere((d) => (weeklyCounts[d] ?? 0) == maxCount);
+
+    final label =
+        'Tickets created this week: ${[for (final d in days) '$d ${weeklyCounts[d] ?? 0}'].join(', ')}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeader('This week', trailing: '$weekTotal tickets created'),
+        const SizedBox(height: AppSpacing.s3),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.s4),
+          decoration: _cardDecoration,
+          child: Semantics(
+            label: label,
+            excludeSemantics: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < days.length; i++) ...[
+                  if (i > 0) const SizedBox(width: AppSpacing.s3),
+                  Expanded(
+                    child: _WeekBar(
+                      day: days[i],
+                      count: weeklyCounts[days[i]] ?? 0,
+                      factor: weeklyFactors[days[i]] ?? 0,
+                      highlighted: days[i] == busiest,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategories() {
+    Widget tile(String cat) => Expanded(
+      child: _CategoryTile(
+        icon: _categoryIcons[cat] ?? Icons.more_horiz_rounded,
+        name: cat,
+        count: categoryTotals[cat] ?? 0,
+        selected: selectedCategory == cat,
+        onTap: () => onCategoryTap(cat),
+      ),
+    );
+
+    final rows = <Widget>[];
+    for (var i = 0; i < categoryKeys.length; i += 2) {
+      if (i > 0) rows.add(const SizedBox(height: AppSpacing.s3));
+      rows.add(
+        Row(
+          children: [
+            tile(categoryKeys[i]),
+            const SizedBox(width: AppSpacing.s3),
+            if (i + 1 < categoryKeys.length)
+              tile(categoryKeys[i + 1])
+            else
+              const Spacer(),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Tickets by Category',
+          style: AppText.heading.copyWith(color: AppColors.ink),
+        ),
+        Text(
+          'Tap a card to filter the ticket list below.',
+          style: AppText.caption.copyWith(color: AppColors.inkMuted),
+        ),
+        const SizedBox(height: AppSpacing.s3),
+        ...rows,
+      ],
+    );
+  }
+
+  Widget _buildRecent() {
+    final isFiltering = selectedCategory != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Recent Tickets',
+                style: AppText.heading.copyWith(color: AppColors.ink),
+              ),
+            ),
+            TextButton(onPressed: onViewAll, child: const Text('View All')),
+          ],
+        ),
+        if (isFiltering)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Showing: $selectedCategory ($filteredCount)',
+                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                ),
+              ),
+              TextButton(onPressed: onClearFilter, child: const Text('Clear')),
+            ],
+          ),
+        if (recentTickets.isEmpty)
+          const EmptyState(
+            icon: Icons.confirmation_number_outlined,
+            title: 'No tickets found.',
+          )
+        else
+          Container(
+            decoration: _cardDecoration,
+            child: ClipRRect(
+              borderRadius: AppRadius.brLg,
+              child: Column(
+                children: [
+                  for (var i = 0; i < recentTickets.length; i++) ...[
+                    if (i > 0)
+                      const Divider(height: 1, color: AppColors.border),
+                    _RecentRow(
+                      ticket: recentTickets[i],
+                      onTap: () =>
+                          onOpenTicket(recentTickets[i]['id'].toString()),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The card over the header: tickets waiting to be assigned and tickets
+/// waiting for sign-off. Both rows open the ticket list.
+class _AttentionCard extends StatelessWidget {
+  final int newCount;
+  final int resolvedCount;
+  final VoidCallback onOpenNew;
+  final VoidCallback onOpenAwaitingSignOff;
+
+  const _AttentionCard({
+    required this.newCount,
+    required this.resolvedCount,
+    required this.onOpenNew,
+    required this.onOpenAwaitingSignOff,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s1),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: ClipRRect(
+        borderRadius: AppRadius.brLg,
+        child: Column(
+          children: [
+            _AttentionRow(
+              count: newCount,
+              title: 'New tickets',
+              subtitle: 'Waiting to be assigned',
+              fg: AppColors.newFg,
+              bg: AppColors.newBg,
+              onTap: onOpenNew,
+            ),
+            const Divider(
+              height: 1,
+              indent: AppSpacing.s4,
+              endIndent: AppSpacing.s4,
+              color: AppColors.border,
+            ),
+            _AttentionRow(
+              count: resolvedCount,
+              title: 'Awaiting sign-off',
+              subtitle: 'Resolved, review and close',
+              fg: AppColors.resolvedFg,
+              bg: AppColors.resolvedBg,
+              onTap: onOpenAwaitingSignOff,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttentionRow extends StatelessWidget {
+  final int count;
+  final String title;
+  final String subtitle;
+  final Color fg;
+  final Color bg;
+  final VoidCallback onTap;
+
+  const _AttentionRow({
+    required this.count,
+    required this.title,
+    required this.subtitle,
+    required this.fg,
+    required this.bg,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$title, $count, open ticket list',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 80),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.s4,
+                vertical: AppSpacing.s3,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: AppRadius.brMd,
+                    ),
+                    child: FittedBox(
+                      child: Text(
+                        '$count',
+                        style: AppText.display.copyWith(color: fg),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.s3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: AppText.heading.copyWith(color: AppColors.ink),
+                        ),
+                        Text(
+                          subtitle,
+                          style: AppText.body.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: AppColors.inkFaint),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OverviewData {
+  final String label;
+  final int count;
+  final Color color;
+
+  const _OverviewData(this.label, this.count, this.color);
+}
+
+/// Label, a bar sized against the largest count, and the count.
+class _OverviewRow extends StatelessWidget {
+  final _OverviewData data;
+  final int largest;
+
+  const _OverviewRow({required this.data, required this.largest});
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = largest == 0 ? 0.0 : data.count / largest;
+
+    return Semantics(
+      label: '${data.label}, ${data.count}',
+      excludeSemantics: true,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 40),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 88,
+              child: Text(
+                data.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.body.copyWith(color: AppColors.inkMuted),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.s3),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: AppRadius.brPill,
+                child: Container(
+                  height: 8,
+                  color: AppColors.border,
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: fraction,
+                    child: Container(color: data.color),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.s3),
+            SizedBox(
+              width: 28,
+              child: Text(
+                '${data.count}',
+                textAlign: TextAlign.right,
+                style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One day of the weekly chart: count, bar, day name.
+class _WeekBar extends StatelessWidget {
+  final String day;
+  final int count;
+  final double factor;
+  final bool highlighted;
+
+  const _WeekBar({
+    required this.day,
+    required this.count,
+    required this.factor,
+    required this.highlighted,
+  });
+
+  static const double _maxBarHeight = 96;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$count',
+          style: AppText.caption.copyWith(
+            color: highlighted ? AppColors.primary : AppColors.inkMuted,
+            fontWeight: highlighted ? FontWeight.w700 : null,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.s1),
+        Container(
+          height: _maxBarHeight * factor,
+          decoration: BoxDecoration(
+            color: highlighted ? AppColors.primary : AppColors.chartMuted,
+            borderRadius: AppRadius.brSm,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.s2),
+        Text(
+          day,
+          maxLines: 1,
+          style: AppText.caption.copyWith(
+            color: highlighted ? AppColors.primary : AppColors.inkMuted,
+            fontWeight: highlighted ? FontWeight.w700 : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Selectable category count; tapping it filters the recent list.
+class _CategoryTile extends StatelessWidget {
+  final IconData icon;
+  final String name;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CategoryTile({
+    required this.icon,
+    required this.name,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '$name, $count',
+      excludeSemantics: true,
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryTint : AppColors.surfaceCard,
+          borderRadius: AppRadius.brLg,
+          // Same width in both states so the tile does not change size.
+          border: Border.all(
+            color: selected ? AppColors.primary : Colors.transparent,
+            width: 2,
+          ),
+          boxShadow: AppShadows.card,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: AppRadius.brLg,
+          child: InkWell(
+            borderRadius: AppRadius.brLg,
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 60),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.s3,
+                  vertical: AppSpacing.s2,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        // White on the selected tile, so the circle stays
+                        // visible against the tint.
+                        color: selected
+                            ? AppColors.surfaceCard
+                            : AppColors.primaryTint,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 20, color: AppColors.primary),
+                    ),
+                    const SizedBox(width: AppSpacing.s3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$count',
+                            style: AppText.title.copyWith(color: AppColors.ink),
+                          ),
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.caption.copyWith(
+                              color: AppColors.inkMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One line of the recent tickets card.
+class _RecentRow extends StatelessWidget {
+  final Map<String, dynamic> ticket;
+  final VoidCallback onTap;
+
+  const _RecentRow({required this.ticket, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedName = (ticket['technicianName'] ?? '').toString();
+    final technicianId = ticket['technicianId'];
+    final status = (ticket['status'] ?? 'NEW').toString().toUpperCase();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.s4,
+            vertical: AppSpacing.s3,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (ticket['title'] ?? '').toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.heading.copyWith(color: AppColors.ink),
+                    ),
+                    Text(
+                      assignedName.isNotEmpty
+                          ? "Assigned: $assignedName"
+                          : technicianId != null
+                          ? "Assigned (ID: ${technicianId.toString().substring(0, 8)}...)"
+                          : "Unassigned",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s2),
+              StatusBadge(status: status),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

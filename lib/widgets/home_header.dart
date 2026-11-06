@@ -21,6 +21,11 @@ class HomeHeader extends StatelessWidget {
   /// [bottomOverlap].
   final Widget? overlapChild;
 
+  /// Optional decoration painted behind the header content (for example
+  /// `TicketStubPattern`), clipped to the header's rounded bottom and placed
+  /// at the top right. Leave null for the plain header.
+  final Widget? background;
+
   const HomeHeader({
     super.key,
     required this.title,
@@ -28,54 +33,73 @@ class HomeHeader extends StatelessWidget {
     this.trailing,
     this.bottomOverlap = 56,
     this.overlapChild,
+    this.background,
   });
 
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
 
-    final header = Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: AppRadius.bottomXl,
-      ),
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.s4,
-        topInset + AppSpacing.s4,
-        AppSpacing.s4,
-        AppSpacing.s4 + bottomOverlap,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    final padding = EdgeInsets.fromLTRB(
+      AppSpacing.s4,
+      topInset + AppSpacing.s4,
+      AppSpacing.s4,
+      AppSpacing.s4 + bottomOverlap,
+    );
+
+    final content = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.title.copyWith(color: AppColors.onPrimary),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: AppSpacing.s1),
                 Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.title.copyWith(color: AppColors.onPrimary),
+                  subtitle!,
+                  style: AppText.body.copyWith(color: AppColors.primaryTint),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: AppSpacing.s1),
-                  Text(
-                    subtitle!,
-                    style: AppText.body.copyWith(color: AppColors.primaryTint),
-                  ),
-                ],
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: AppSpacing.s2),
+          trailing!,
+        ],
+      ],
+    );
+
+    final decoration = BoxDecoration(
+      color: AppColors.primary,
+      borderRadius: AppRadius.bottomXl,
+    );
+
+    final header = background == null
+        ? Container(
+            width: double.infinity,
+            decoration: decoration,
+            padding: padding,
+            child: content,
+          )
+        : Container(
+            width: double.infinity,
+            decoration: decoration,
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                Positioned(right: -24, top: 8, child: background!),
+                Padding(padding: padding, child: content),
               ],
             ),
-          ),
-          if (trailing != null) ...[
-            const SizedBox(width: AppSpacing.s2),
-            trailing!,
-          ],
-        ],
-      ),
-    );
+          );
 
     if (overlapChild == null) return header;
 

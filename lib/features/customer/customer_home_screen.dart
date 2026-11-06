@@ -6,9 +6,11 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../models/ticket.dart';
 import '../../utils/enums.dart';
+import '../../widgets/header_icon_badge.dart';
 import '../../widgets/home_header.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../widgets/status_badge.dart';
+import '../../widgets/ticket_stub_pattern.dart';
 import 'speed_test_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -240,6 +242,10 @@ class CustomerHomeContent extends StatelessWidget {
           HomeHeader(
             title: title,
             subtitle: 'Customer Portal',
+            background: const TicketStubPattern(),
+            trailing: const HeaderIconBadge(
+              asset: 'assets/images/customer_icon.png',
+            ),
             overlapChild: _CountersCard(
               counters: [
                 _Counter('Assigned', assignedCount, AppColors.assignedFg),
@@ -367,10 +373,7 @@ class _SubmitTicketCard extends StatelessWidget {
                   color: AppColors.surfaceCard,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.add_task_rounded,
-                  color: AppColors.accentStrong,
-                ),
+                child: const Icon(Icons.add, color: AppColors.accentStrong),
               ),
               const SizedBox(width: AppSpacing.s3),
               Expanded(

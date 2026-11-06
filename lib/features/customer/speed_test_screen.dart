@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../../core/theme/app_tokens.dart';
 
 class SpeedTestScreen extends StatefulWidget {
   const SpeedTestScreen({super.key});
@@ -68,16 +69,12 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.surfaceCard,
       appBar: AppBar(
-        title: const Text(
-          'Internet Speed Test',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
+        title: const Text('Internet Speed Test'),
         actions: [
           IconButton(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             icon: const Icon(Icons.refresh),
             tooltip: 'Reload speed test',
             onPressed: _reload,
@@ -89,48 +86,90 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
           if (_progress < 100)
             LinearProgressIndicator(
               value: _progress / 100,
-              color: const Color(0xFF005CAB),
+              minHeight: 4,
+              color: AppColors.primary,
+              backgroundColor: AppColors.primaryTint,
             ),
           Expanded(
             child: Stack(
               children: [
                 WebViewWidget(controller: _controller),
-                if (_loadFailed)
-                  Container(
-                    color: const Color(0xFFF5F5F5),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.wifi_off_rounded,
-                          size: 56,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Could not load the speed test.\n'
-                          'Check your internet connection and try again.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _retry,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF005CAB),
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                if (_loadFailed) SpeedTestErrorView(onRetry: _retry),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown over the page when the speed test fails to load.
+class SpeedTestErrorView extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const SpeedTestErrorView({super.key, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.surfaceCard,
+      width: double.infinity,
+      height: double.infinity,
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Semantics(
+                  liveRegion: true,
+                  container: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: const BoxDecoration(
+                          color: AppColors.cancelledBg,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.wifi_off_rounded,
+                          size: 36,
+                          color: AppColors.cancelledFg,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Could not load the speed test.',
+                        textAlign: TextAlign.center,
+                        style: AppText.title.copyWith(color: AppColors.ink),
+                      ),
+                      const SizedBox(height: AppSpacing.s2),
+                      Text(
+                        'Check your internet connection and try again.',
+                        textAlign: TextAlign.center,
+                        style: AppText.body.copyWith(color: AppColors.inkMuted),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s6),
+                ElevatedButton.icon(
+                  onPressed: onRetry,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(160, 48),
+                  ),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -43,11 +43,8 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // The bar floats over the body (extendBody). Home and Tickets pad their
-    // own content; the Profile tab is not restyled yet, so it is kept clear of
-    // the bar here until its own phase.
-    final navClearance = AppBottomNav.clearance(context);
-
+    // The bar floats over the body (extendBody); each tab pads its own
+    // content for it.
     return Scaffold(
       extendBody: true,
       body: IndexedStack(
@@ -55,10 +52,7 @@ class _CustomerMainScreenState extends State<CustomerMainScreen> {
         children: [
           const CustomerHomeScreen(),
           const MyTicketsScreen(),
-          Padding(
-            padding: EdgeInsets.only(bottom: navClearance),
-            child: const ProfileScreen(),
-          ),
+          const ProfileScreen(),
         ],
       ),
       bottomNavigationBar: AppBottomNav(

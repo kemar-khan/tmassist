@@ -1,6 +1,7 @@
 // lib/features/supervisor/supervisor_main_screen.dart
 
 import 'package:flutter/material.dart';
+import '../../widgets/app_bottom_nav.dart';
 import 'supervisor_home_screen.dart';
 import 'incoming_tickets_screen.dart';
 import 'profile_screen.dart';
@@ -16,12 +17,40 @@ class SupervisorMainScreen extends StatefulWidget {
 class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
   int _selectedIndex = 0;
 
-  // "View All" on the home screen jumps to the Tickets tab (index 1).
-  late final List<Widget> _screens = [
-    SupervisorHomeScreen(onViewAllTickets: () => _onItemTapped(1)),
-    const IncomingTicketsScreen(),
-    const TechnicianPerformanceScreen(),
-    const SupervisorProfileScreen(),
+  // Asks the Tickets tab to select a status filter (see TicketFilterRequest).
+  TicketFilterRequest? _ticketsFilterRequest;
+
+  void _openTicketsWithStatus(String status) {
+    setState(() {
+      _ticketsFilterRequest = TicketFilterRequest(
+        status: status,
+        id: (_ticketsFilterRequest?.id ?? 0) + 1,
+      );
+      _selectedIndex = 1;
+    });
+  }
+
+  static const List<AppNavItem> _navItems = [
+    AppNavItem(
+      icon: Icons.dashboard_outlined,
+      activeIcon: Icons.dashboard_rounded,
+      label: 'Home',
+    ),
+    AppNavItem(
+      icon: Icons.confirmation_number_outlined,
+      activeIcon: Icons.confirmation_number_rounded,
+      label: 'Tickets',
+    ),
+    AppNavItem(
+      icon: Icons.analytics_outlined,
+      activeIcon: Icons.analytics_rounded,
+      label: 'Analytics',
+    ),
+    AppNavItem(
+      icon: Icons.person_outline,
+      activeIcon: Icons.person_rounded,
+      label: 'Profile',
+    ),
   ];
 
   void _onItemTapped(int index) {
@@ -32,43 +61,26 @@ class _SupervisorMainScreenState extends State<SupervisorMainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The bar floats over the body (extendBody); every tab pads its own
+    // content for it.
+    // "View All" on the home screen jumps to the Tickets tab (index 1).
+    final screens = <Widget>[
+      SupervisorHomeScreen(
+        onViewAllTickets: () => _onItemTapped(1),
+        onOpenTicketsWithStatus: _openTicketsWithStatus,
+      ),
+      IncomingTicketsScreen(filterRequest: _ticketsFilterRequest),
+      const TechnicianPerformanceScreen(),
+      const SupervisorProfileScreen(),
+    ];
+
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _screens),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: NavigationBar(
-            height: 56,
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: _onItemTapped,
-            backgroundColor: Colors.white,
-            indicatorColor: const Color(0xFF005CAB).withOpacity(0.10),
-            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined, size: 20),
-                selectedIcon: Icon(Icons.dashboard_rounded, size: 22),
-                label: 'Home',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.confirmation_number_outlined, size: 20),
-                selectedIcon: Icon(Icons.confirmation_number_rounded, size: 22),
-                label: 'Tickets',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.analytics_outlined, size: 20),
-                selectedIcon: Icon(Icons.analytics_rounded, size: 22),
-                label: 'Analytics',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline, size: 20),
-                selectedIcon: Icon(Icons.person_rounded, size: 22),
-                label: 'Profile',
-              ),
-            ],
-          ),
-        ),
+      extendBody: true,
+      body: IndexedStack(index: _selectedIndex, children: screens),
+      bottomNavigationBar: AppBottomNav(
+        items: _navItems,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
       ),
     );
   }

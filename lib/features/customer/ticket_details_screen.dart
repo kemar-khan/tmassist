@@ -1,7 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/ticket_service.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../widgets/app_buttons.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/info_row.dart';
+import '../../widgets/progress_stepper.dart';
+import '../../widgets/section_card.dart';
+import '../../widgets/status_badge.dart';
 
 class TicketDetailsScreen extends StatelessWidget {
   final String ticketId;
@@ -12,23 +20,17 @@ class TicketDetailsScreen extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Cancel Ticket',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Cancel Ticket'),
         content: const Text('Cancel this ticket? This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Keep Ticket'),
           ),
-          TextButton(
+          OutlinedButton(
+            style: AppButtonStyles.destructive,
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(
-              'Cancel Ticket',
-              style: TextStyle(color: Colors.red.shade700),
-            ),
+            child: const Text('Cancel Ticket'),
           ),
         ],
       ),
@@ -39,20 +41,14 @@ class TicketDetailsScreen extends StatelessWidget {
     try {
       await TicketService().cancelTicket(ticketId);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ticket cancelled'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      showAppSnack(context, 'Ticket cancelled', kind: SnackKind.success);
       Navigator.pop(context);
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
+      showAppSnack(
+        context,
+        e.toString().replaceFirst('Exception: ', ''),
+        kind: SnackKind.error,
       );
     }
   }
@@ -60,16 +56,7 @@ class TicketDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text(
-          'Ticket Details',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Ticket Details')),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('tickets')
@@ -83,17 +70,21 @@ class TicketDetailsScreen extends StatelessWidget {
           if (snapshot.hasError) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.s4),
                 child: Text(
                   'Something went wrong:\n${snapshot.error}',
                   textAlign: TextAlign.center,
+                  style: AppText.body.copyWith(color: AppColors.cancelledFg),
                 ),
               ),
             );
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Ticket not found.'));
+            return const EmptyState(
+              icon: Icons.confirmation_number_outlined,
+              title: 'Ticket not found.',
+            );
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -113,72 +104,50 @@ class TicketDetailsScreen extends StatelessWidget {
           final createdAt = data['createdAt'] as Timestamp?;
           final updatedAt = data['updatedAt'] as Timestamp?;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildSectionTitle('Ticket Status'),
-                _buildStatusCard(status),
-                if (status == 'NEW' || status == 'ASSIGNED') ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => _confirmAndCancel(context),
-                    icon: const Icon(Icons.cancel_outlined, size: 20),
-                    label: const Text(
-                      'Cancel Ticket',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
-                      side: BorderSide(color: Colors.red.shade700),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
+          return SafeArea(
+            // The bottom inset is added to the scroll padding below.
+            bottom: false,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.s4,
+                AppSpacing.s4,
+                AppSpacing.s4,
+                MediaQuery.paddingOf(context).bottom + AppSpacing.s6,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildStatusCard(context, status),
+                  const SizedBox(height: AppSpacing.s4),
+                  _buildInfoCard(
+                    ticketId: ticketId,
+                    title: title,
+                    description: description,
+                    category: category,
+                    address: address,
+                    createdAt: createdAt,
                   ),
+                  const SizedBox(height: AppSpacing.s4),
+                  if (technicianId != null) ...[
+                    TechnicianInfoCard(technicianId: technicianId.toString()),
+                    const SizedBox(height: AppSpacing.s4),
+                  ],
+                  _buildCustomerCard(
+                    customerName: customerName,
+                    customerEmail: customerEmail,
+                    contactNumber: contactNumber,
+                  ),
+                  const SizedBox(height: AppSpacing.s4),
+                  _buildActivityLogCard(
+                    status: status,
+                    createdAt: createdAt,
+                    updatedAt: updatedAt,
+                    technicianName: technicianName?.toString(),
+                  ),
+                  const SizedBox(height: AppSpacing.s4),
+                  _buildAttachmentsCard(attachmentUrl),
                 ],
-                const SizedBox(height: 24),
-
-                _buildSectionTitle('Ticket Info'),
-                _buildInfoCard(
-                  ticketId: ticketId,
-                  title: title,
-                  description: description,
-                  category: category,
-                  address: address,
-                  createdAt: createdAt,
-                ),
-                const SizedBox(height: 24),
-
-                if (technicianId != null) ...[
-                  _buildSectionTitle('Technician Info'),
-                  TechnicianInfoCard(technicianId: technicianId.toString()),
-                  const SizedBox(height: 24),
-                ],
-
-                _buildSectionTitle('Customer Info'),
-                _buildCustomerCard(
-                  customerName: customerName,
-                  customerEmail: customerEmail,
-                  contactNumber: contactNumber,
-                ),
-                const SizedBox(height: 24),
-
-                _buildSectionTitle('Activity Log'),
-                _buildActivityLogCard(
-                  status: status,
-                  createdAt: createdAt,
-                  updatedAt: updatedAt,
-                  technicianName: technicianName?.toString(),
-                ),
-                const SizedBox(height: 24),
-
-                _buildSectionTitle('Attachments'),
-                _buildAttachmentsCard(attachmentUrl),
-                const SizedBox(height: 32),
-              ],
+              ),
             ),
           );
         },
@@ -186,142 +155,46 @@ class TicketDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF333333),
-        ),
-      ),
-    );
-  }
+  Widget _buildStatusCard(BuildContext context, String currentStatus) {
+    final canCancel = currentStatus == 'NEW' || currentStatus == 'ASSIGNED';
 
-  Widget _buildCard({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _buildStatusCard(String currentStatus) {
-    final steps = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
-    // CLOSED was RESOLVED first, so it shows every step as completed.
-    final currentIndex = currentStatus == 'CLOSED'
-        ? steps.length - 1
-        : steps.indexOf(currentStatus);
-
-    return _buildCard(
+    return SectionCard(
+      title: 'Ticket Status',
+      trailing: StatusBadge(status: currentStatus),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Current Status',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              _buildStatusBadge(currentStatus),
-            ],
-          ),
-          const SizedBox(height: 24),
-          ...List.generate(steps.length, (index) {
-            final step = steps[index];
-            final isCompleted = currentIndex >= index;
-            final isCurrent = currentIndex == index;
-            final isLast = index == steps.length - 1;
-
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Column(
-                  children: [
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isCompleted
-                            ? const Color(0xFF005CAB)
-                            : Colors.grey[200],
-                        border: isCurrent
-                            ? Border.all(
-                                color: const Color(0xFFFF6600),
-                                width: 2,
-                              )
-                            : null,
-                      ),
-                      child: isCompleted
-                          ? const Icon(
-                              Icons.check,
-                              size: 14,
-                              color: Colors.white,
-                            )
-                          : null,
-                    ),
-                    if (!isLast)
-                      Container(
-                        width: 2,
-                        height: 30,
-                        color: isCompleted
-                            ? const Color(0xFF005CAB)
-                            : Colors.grey[200],
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      _statusLabel(step),
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: isCurrent
-                            ? FontWeight.bold
-                            : (isCompleted
-                                  ? FontWeight.w600
-                                  : FontWeight.normal),
-                        color: isCompleted
-                            ? const Color(0xFF333333)
-                            : Colors.grey[500],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }),
+          VerticalStatusTimeline(status: currentStatus),
           if (currentStatus == 'CLOSED') ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.s3),
             Text(
               'This ticket has been closed.',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              style: AppText.caption.copyWith(color: AppColors.inkMuted),
             ),
           ],
-          if (currentStatus == CancelledStatus.value) ...[
-            const SizedBox(height: 12),
-            Text(
-              'This ticket was cancelled.',
-              style: TextStyle(color: CancelledStatus.textColor, fontSize: 13),
+          if (currentStatus == CancelledStatus.value)
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.s3),
+              decoration: BoxDecoration(
+                color: AppColors.cancelledBg,
+                borderRadius: AppRadius.brMd,
+              ),
+              child: Text(
+                'This ticket was cancelled.',
+                style: AppText.bodyStrong.copyWith(
+                  color: AppColors.cancelledFg,
+                ),
+              ),
+            ),
+          if (canCancel) ...[
+            const SizedBox(height: AppSpacing.s4),
+            const Divider(height: 1, color: AppColors.border),
+            const SizedBox(height: AppSpacing.s4),
+            OutlinedButton.icon(
+              onPressed: () => _confirmAndCancel(context),
+              style: AppButtonStyles.destructive,
+              icon: const Icon(Icons.cancel_outlined),
+              label: const Text('Cancel Ticket'),
             ),
           ],
         ],
@@ -337,42 +210,39 @@ class TicketDetailsScreen extends StatelessWidget {
     required String address,
     required Timestamp? createdAt,
   }) {
-    return _buildCard(
+    return SectionCard(
+      title: 'Ticket Info',
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildInfoRow('Ticket ID', ticketId),
-          _buildDivider(),
-          _buildInfoRow('Category', category),
-          _buildDivider(),
-          _buildInfoRow('Date Submitted', _formatTimestamp(createdAt)),
-          _buildDivider(),
-          _buildInfoRow('Address', address),
-          _buildDivider(),
-          const Text(
-            'Issue Description',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey,
-              fontWeight: FontWeight.bold,
-            ),
+          InfoRow(label: 'Ticket ID', value: ticketId, showDivider: true),
+          InfoRow(label: 'Category', value: category, showDivider: true),
+          InfoRow(
+            label: 'Date Submitted',
+            value: _formatTimestamp(createdAt),
+            showDivider: true,
           ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF333333),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            description,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[800],
-              height: 1.5,
+          InfoRow(label: 'Address', value: address, showDivider: true),
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.s3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Issue Description',
+                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                ),
+                const SizedBox(height: AppSpacing.s2),
+                Text(
+                  title,
+                  style: AppText.heading.copyWith(color: AppColors.ink),
+                ),
+                const SizedBox(height: AppSpacing.s2),
+                Text(
+                  description,
+                  style: AppText.body.copyWith(color: AppColors.inkMuted),
+                ),
+              ],
             ),
           ),
         ],
@@ -385,86 +255,22 @@ class TicketDetailsScreen extends StatelessWidget {
     required String customerEmail,
     required String contactNumber,
   }) {
-    return _buildCard(
+    return SectionCard(
+      title: 'Customer Info',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildInfoRow('Customer Name', customerName),
-          _buildDivider(),
-          _buildInfoRow('Customer Email', customerEmail),
-          _buildDivider(),
-          _buildInfoRow('Contact Number', contactNumber),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, {Color? valueColor}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Colors.grey,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+          InfoRow(
+            label: 'Customer Name',
+            value: customerName,
+            showDivider: true,
           ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 14,
-                color: valueColor ?? const Color(0xFF333333),
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.right,
-            ),
+          InfoRow(
+            label: 'Customer Email',
+            value: customerEmail,
+            showDivider: true,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Divider(color: Colors.grey[200], height: 16);
-  }
-
-  Widget _buildTechnicianCard(String technicianId) {
-    return _buildCard(
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 30,
-            backgroundColor: Color(0xFF005CAB),
-            child: Icon(Icons.person, color: Colors.white, size: 36),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  technicianId,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF333333),
-                  ),
-                ),
-                const Text(
-                  'Assigned Technician ID',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
+          InfoRow(label: 'Contact Number', value: contactNumber),
         ],
       ),
     );
@@ -526,86 +332,44 @@ class TicketDetailsScreen extends StatelessWidget {
 
     final displayLogs = logs.reversed.toList();
 
-    return _buildCard(
-      child: ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: displayLogs.length,
-        itemBuilder: (context, index) {
-          final log = displayLogs[index];
-          final date = log['date'] as DateTime?;
-          final isFirst = index == 0;
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Column(
-                  children: [
-                    Icon(
-                      isFirst
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                      size: 16,
-                      color: isFirst ? const Color(0xFF005CAB) : Colors.grey,
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              log['title'] as String,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: isFirst
-                                    ? const Color(0xFF333333)
-                                    : Colors.grey[700],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _formatShortDate(date),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        log['desc'] as String,
-                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    return SectionCard(
+      title: 'Activity Log',
+      child: Column(
+        children: [
+          for (var index = 0; index < displayLogs.length; index++)
+            _ActivityEntry(
+              title: displayLogs[index]['title'] as String,
+              description: displayLogs[index]['desc'] as String,
+              timestamp: _formatShortDate(
+                displayLogs[index]['date'] as DateTime?,
+              ),
+              isLatest: index == 0,
+              isLast: index == displayLogs.length - 1,
             ),
-          );
-        },
+        ],
       ),
     );
   }
 
   Widget _buildAttachmentsCard(String attachmentUrl) {
     if (attachmentUrl.trim().isEmpty) {
-      return _buildCard(child: const Text('No attachment uploaded'));
+      return SectionCard(
+        title: 'Attachments',
+        child: Text(
+          'No attachment uploaded',
+          style: AppText.body.copyWith(color: AppColors.inkMuted),
+        ),
+      );
     }
 
-    return _buildCard(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+    return SectionCard(
+      title: 'Attachments',
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.brMd,
+          border: Border.all(color: AppColors.border),
+        ),
         child: Image.network(
           attachmentUrl,
           height: 250,
@@ -614,70 +378,6 @@ class TicketDetailsScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Widget _buildStatusBadge(String status) {
-    Color color;
-    switch (status) {
-      case 'NEW':
-        color = Colors.orange;
-        break;
-      case 'ASSIGNED':
-        color = Colors.blue;
-        break;
-      case 'IN_PROGRESS':
-        color = Colors.purple;
-        break;
-      case 'RESOLVED':
-        color = Colors.green;
-        break;
-      case 'CLOSED':
-        color = Colors.grey;
-        break;
-      case 'CANCELLED':
-        color = CancelledStatus.textColor;
-        break;
-      default:
-        color = Colors.black54;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: CancelledStatus.isCancelled(status)
-            ? CancelledStatus.backgroundColor
-            : color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.5)),
-      ),
-      child: Text(
-        _statusLabel(status).toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'NEW':
-        return 'New';
-      case 'ASSIGNED':
-        return 'Assigned';
-      case 'IN_PROGRESS':
-        return 'In Progress';
-      case 'RESOLVED':
-        return 'Resolved';
-      case 'CLOSED':
-        return 'Closed';
-      case 'CANCELLED':
-        return CancelledStatus.label;
-      default:
-        return status;
-    }
   }
 
   String _formatTimestamp(Timestamp? timestamp) {
@@ -731,70 +431,59 @@ class TechnicianInfoCard extends StatelessWidget {
           }
         }
 
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+        return SectionCard(
+          title: 'Technician Info',
           child: Row(
             children: [
-              const CircleAvatar(
-                radius: 30,
-                backgroundColor: Color(0xFF005CAB),
-                child: Icon(Icons.person, color: Colors.white, size: 36),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryTint,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.person, color: AppColors.primary),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: AppSpacing.s3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF333333),
-                      ),
+                      style: AppText.heading.copyWith(color: AppColors.ink),
                     ),
                     if (specialization.isNotEmpty)
                       Text(
                         specialization,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF005CAB),
-                          fontWeight: FontWeight.w600,
+                        style: AppText.caption.copyWith(
+                          color: AppColors.inkMuted,
                         ),
                       ),
-                    const Text(
+                    Text(
                       'Assigned Technician',
-                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                      style: AppText.caption.copyWith(
+                        color: AppColors.inkMuted,
+                      ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: AppSpacing.s2),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+                  horizontal: AppSpacing.s3,
+                  vertical: AppSpacing.s1,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF005CAB).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
+                  color: AppColors.primaryTint,
+                  borderRadius: AppRadius.brPill,
                 ),
-                child: const Text(
+                child: Text(
                   'AUTO ASSIGNED',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF005CAB),
+                  style: AppText.caption.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -802,6 +491,81 @@ class TechnicianInfoCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// One line of the activity log: a dot joined to the next by a thin line, the
+/// entry text, and its time underneath.
+class _ActivityEntry extends StatelessWidget {
+  final String title;
+  final String description;
+  final String timestamp;
+  final bool isLatest;
+  final bool isLast;
+
+  const _ActivityEntry({
+    required this.title,
+    required this.description,
+    required this.timestamp,
+    required this.isLatest,
+    required this.isLast,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dotColor = isLatest ? AppColors.primary : AppColors.borderStrong;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 10,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.s1),
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(child: Container(width: 1, color: AppColors.border)),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.s3),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+                  ),
+                  Text(
+                    description,
+                    style: AppText.body.copyWith(color: AppColors.inkMuted),
+                  ),
+                  const SizedBox(height: AppSpacing.s1),
+                  Text(
+                    timestamp,
+                    style: AppText.caption.copyWith(color: AppColors.inkFaint),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

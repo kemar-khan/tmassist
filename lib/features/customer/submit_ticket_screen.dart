@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/app_text_field.dart';
+import '../../widgets/picker_sheet.dart';
+import '../../widgets/section_card.dart';
 import '../../core/services/ticket_service.dart';
 import '../../core/services/cloudinary_service.dart';
 import '../../utils/image_picker_helper.dart';
@@ -65,22 +70,20 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ticket submitted successfully!'),
-          backgroundColor: Colors.green,
-        ),
+      showAppSnack(
+        context,
+        'Ticket submitted successfully!',
+        kind: SnackKind.success,
       );
 
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to submit ticket: $e'),
-          backgroundColor: Colors.red,
-        ),
+      showAppSnack(
+        context,
+        'Failed to submit ticket: $e',
+        kind: SnackKind.error,
       );
     } finally {
       if (mounted) {
@@ -127,18 +130,16 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         _addressController.text = address;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Location added successfully'),
-          backgroundColor: Colors.green,
-        ),
+      showAppSnack(
+        context,
+        'Location added successfully',
+        kind: SnackKind.success,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to get location: $e'),
-          backgroundColor: Colors.red,
-        ),
+      showAppSnack(
+        context,
+        'Failed to get location: $e',
+        kind: SnackKind.error,
       );
     } finally {
       if (mounted) {
@@ -151,13 +152,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     final picked = await pickImageWithChoice(context);
     if (!mounted) return;
     if (picked == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No photo selected'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      showAppSnack(context, 'No photo selected');
       return;
     }
 
@@ -171,19 +166,13 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         _attachmentFileName = url.split('/').last;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Attachment uploaded successfully'),
-          backgroundColor: Colors.green,
-        ),
+      showAppSnack(
+        context,
+        'Attachment uploaded successfully',
+        kind: SnackKind.success,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Upload failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppSnack(context, 'Upload failed: $e', kind: SnackKind.error);
     } finally {
       if (mounted) {
         setState(() => _isUploadingAttachment = false);
@@ -200,12 +189,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
 
   Future<void> _extractDetails() async {
     if (_aiInputController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please describe your issue first'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      showAppSnack(context, 'Please describe your issue first');
       return;
     }
 
@@ -221,46 +205,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         if (!mounted) return;
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            icon: const Icon(
-              Icons.warning_amber_rounded,
-              color: Colors.orange,
-              size: 48,
-            ),
-            title: const Text(
-              'Invalid Input',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            content: const Text(
-              'Your description doesn\'t seem to be related to a service issue. '
-              'Please describe your actual problem, for example:\n\n'
-              '• "My internet is not working since this morning"\n'
-              '• "The WiFi router keeps disconnecting"\n'
-              '• "My TV box shows no signal"',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, height: 1.5),
-            ),
-            actions: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF005CAB),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Text('Try Again'),
-                ),
-              ),
-            ],
-          ),
+          builder: (context) => const InvalidInputDialog(),
         );
         return;
       }
@@ -281,21 +226,13 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         }
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Details extracted! Please review and complete the form.',
-          ),
-          backgroundColor: Colors.green,
-        ),
+      showAppSnack(
+        context,
+        'Details extracted! Please review and complete the form.',
+        kind: SnackKind.success,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Extraction failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppSnack(context, 'Extraction failed: $e', kind: SnackKind.error);
     } finally {
       if (mounted) setState(() => _isExtracting = false);
     }
@@ -313,585 +250,620 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text(
-          'Submit Ticket',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildModeToggle(),
-              const SizedBox(height: 16),
-              if (_isAiMode) _buildAiInputSection(),
-              _buildSectionTitle('Issue Details'),
-              _buildCard(
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
-                      decoration: _inputDecoration(
-                        'Issue Category',
-                        Icons.category_outlined,
+      appBar: AppBar(title: const Text('Submit Ticket')),
+      body: SafeArea(
+        // The bottom inset is added to the scroll padding below.
+        bottom: false,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.s4,
+            AppSpacing.s4,
+            AppSpacing.s4,
+            MediaQuery.paddingOf(context).bottom + AppSpacing.s6,
+          ),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildModeToggle(),
+                const SizedBox(height: AppSpacing.s4),
+                if (_isAiMode) ...[
+                  _buildAiInputSection(),
+                  const SizedBox(height: AppSpacing.s4),
+                ],
+                SectionCard(
+                  title: 'Issue Details',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildPickerField(
+                        label: 'Issue Category',
+                        hint: 'Select a category',
+                        icon: Icons.category_outlined,
+                        options: _categories,
+                        value: _selectedCategory,
+                        iconBuilder: _categoryIcon,
+                        errorMessage: 'Please select a category',
+                        onSaved: () => _category = _selectedCategory,
+                        onChanged: (value) {
+                          setState(() => _selectedCategory = value);
+                        },
                       ),
-                      value: _selectedCategory,
-                      items: ['Network', 'Hardware', 'Software', 'Other']
-                          .map(
-                            (e) => DropdownMenuItem<String>(
-                              value: e,
-                              child: Text(e),
-                            ),
-                          )
-                          .toList(),
-                      validator: (val) =>
-                          val == null ? 'Please select a category' : null,
-                      onSaved: (val) => _category = val,
-                      onChanged: (String? value) {
-                        setState(() => _selectedCategory = value);
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _titleController,
-                      decoration: _inputDecoration(
-                        'Ticket Title',
-                        Icons.title_outlined,
+                      const SizedBox(height: AppSpacing.s4),
+                      AppTextField(
+                        label: 'Ticket Title',
+                        hint: 'Enter Your Ticket Title',
+                        prefixIcon: Icons.title_outlined,
+                        controller: _titleController,
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Please enter a title';
+                          }
+                          return null;
+                        },
+                        onSaved: (val) => _title = val?.trim(),
                       ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please enter a title';
-                        }
-                        return null;
-                      },
-                      onSaved: (val) => _title = val?.trim(),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _descriptionController,
-                      decoration: _inputDecoration(
-                        'Description',
-                        Icons.description_outlined,
-                      ),
-                      maxLines: 4,
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please describe the issue';
-                        }
-                        return null;
-                      },
-                      onSaved: (val) => _description = val?.trim(),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              _buildSectionTitle('Location'),
-              _buildCard(
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _addressController,
-                      decoration: _inputDecoration(
-                        'Service Address',
-                        Icons.location_on_outlined,
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please enter an address';
-                        }
-                        return null;
-                      },
-                      onSaved: (val) => _address = val?.trim(),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      decoration: _inputDecoration('Area', Icons.map_outlined),
-                      value: _selectedArea,
-                      items: ServiceAreas.all
-                          .map(
-                            (e) => DropdownMenuItem<String>(
-                              value: e,
-                              child: Text(e),
-                            ),
-                          )
-                          .toList(),
-                      validator: (val) =>
-                          val == null ? 'Please select an area' : null,
-                      onSaved: (val) => _area = val,
-                      onChanged: (val) => setState(() => _selectedArea = val),
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: _isGettingLocation
-                          ? null
-                          : _getCurrentLocation,
-                      icon: _isGettingLocation
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(
-                              Icons.my_location,
-                              color: Color(0xFF005CAB),
-                            ),
-                      label: Text(
-                        _isGettingLocation
-                            ? 'Getting Location...'
-                            : 'Use Current Location',
-                        style: const TextStyle(
-                          color: Color(0xFF005CAB),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: Color(0xFF005CAB)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              _buildSectionTitle('Additional Info'),
-              _buildCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      decoration: _inputDecoration(
-                        'Contact Number',
-                        Icons.phone_outlined,
-                      ),
-                      keyboardType: TextInputType.phone,
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please enter a contact number';
-                        }
-                        if (val.trim().length < 10) {
-                          return 'Please enter a valid contact number';
-                        }
-                        return null;
-                      },
-                      onSaved: (val) => _contactNumber = val?.trim(),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Attachment',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF333333),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: _isUploadingAttachment ? null : _uploadAttachment,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          border: Border.all(
-                            color: _attachmentUrl == null
-                                ? Colors.grey[300]!
-                                : Colors.green,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              _isUploadingAttachment
-                                  ? Icons.hourglass_top_rounded
-                                  : _attachmentUrl == null
-                                  ? Icons.cloud_upload_outlined
-                                  : Icons.check_circle_outline,
-                              size: 32,
-                              color: _isUploadingAttachment
-                                  ? Colors.orange
-                                  : _attachmentUrl == null
-                                  ? Colors.grey[400]
-                                  : Colors.green,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _isUploadingAttachment
-                                  ? 'Uploading attachment...'
-                                  : _attachmentFileName ??
-                                        'Tap to upload image or file',
-                              style: TextStyle(
-                                color: _attachmentUrl == null
-                                    ? Colors.grey[500]
-                                    : Colors.green,
-                                fontWeight: _attachmentUrl == null
-                                    ? FontWeight.normal
-                                    : FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    if (_attachmentUrl != null) ...[
-                      const SizedBox(height: 12),
-
-                      (_attachmentFileName?.toLowerCase().endsWith('.pdf') ??
-                              false)
-                          ? Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.red.withOpacity(0.2),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.picture_as_pdf,
-                                    color: Colors.red,
-                                    size: 40,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _attachmentFileName ?? 'PDF File',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : Container(
-                              width: double.infinity,
-                              height: 180,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.grey.shade300),
-                              ),
-                              child: Image.network(
-                                _attachmentUrl!,
-                                fit: BoxFit.cover,
-                                loadingBuilder:
-                                    (context, child, loadingProgress) {
-                                      if (loadingProgress == null) {
-                                        return child;
-                                      }
-
-                                      return const Center(
-                                        child: CircularProgressIndicator(),
-                                      );
-                                    },
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Center(
-                                    child: Icon(Icons.broken_image, size: 50),
-                                  );
-                                },
-                              ),
-                            ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          TextButton.icon(
-                            onPressed: _isUploadingAttachment
-                                ? null
-                                : _uploadAttachment,
-                            icon: const Icon(Icons.swap_horiz, size: 18),
-                            label: const Text('Replace'),
-                          ),
-                          TextButton.icon(
-                            onPressed: _isUploadingAttachment
-                                ? null
-                                : _removeAttachment,
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              size: 18,
-                              color: Colors.red,
-                            ),
-                            label: const Text(
-                              'Remove',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: AppSpacing.s4),
+                      AppTextField(
+                        label: 'Description',
+                        hint: 'e.g. My Internet has been down since morning..',
+                        prefixIcon: Icons.notes_outlined,
+                        controller: _descriptionController,
+                        maxLines: 4,
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Please describe the issue';
+                          }
+                          return null;
+                        },
+                        onSaved: (val) => _description = val?.trim(),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+                SectionCard(
+                  title: 'Location',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AppTextField(
+                        label: 'Service Address',
+                        hint:
+                            'e.g. No.5 Jalan Bayu Indah 5 Taman Bayu Cemerlang...',
+                        prefixIcon: Icons.location_on_outlined,
+                        controller: _addressController,
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Please enter an address';
+                          }
+                          return null;
+                        },
+                        onSaved: (val) => _address = val?.trim(),
+                      ),
+                      const SizedBox(height: AppSpacing.s4),
+                      _buildPickerField(
+                        label: 'Area',
+                        hint: 'Select an area',
+                        icon: Icons.map_outlined,
+                        options: ServiceAreas.all,
+                        value: _selectedArea,
+                        errorMessage: 'Please select an area',
+                        onSaved: () => _area = _selectedArea,
+                        onChanged: (val) => setState(() => _selectedArea = val),
+                      ),
+                      const SizedBox(height: AppSpacing.s4),
+                      OutlinedButton.icon(
+                        onPressed: _isGettingLocation
+                            ? null
+                            : _getCurrentLocation,
+                        icon: _isGettingLocation
+                            ? const _ButtonSpinner(color: AppColors.primary)
+                            : const Icon(Icons.my_location),
+                        label: Text(
+                          _isGettingLocation
+                              ? 'Getting Location...'
+                              : 'Use Current Location',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+                SectionCard(
+                  title: 'Additional Info',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AppTextField(
+                        label: 'Contact Number',
+                        hint: '0123456789',
+                        prefixIcon: Icons.phone_outlined,
+                        keyboardType: TextInputType.phone,
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Please enter a contact number';
+                          }
+                          if (val.trim().length < 10) {
+                            return 'Please enter a valid contact number';
+                          }
+                          return null;
+                        },
+                        onSaved: (val) => _contactNumber = val?.trim(),
+                      ),
+                      const SizedBox(height: AppSpacing.s4),
+                      _buildAttachment(),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.s2),
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submitForm,
+                    child: _isSubmitting
+                        ? const _ButtonSpinner(color: AppColors.onPrimary)
+                        : const Text('Submit Ticket'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const List<String> _categories = [
+    'Network',
+    'Hardware',
+    'Software',
+    'Other',
+  ];
+
+  static IconData? _categoryIcon(String category) {
+    switch (category) {
+      case 'Network':
+        return Icons.wifi;
+      case 'Software':
+        return Icons.apps;
+      case 'Hardware':
+        return Icons.memory;
+      case 'Other':
+        return Icons.more_horiz;
+    }
+    return null;
+  }
+
+  /// A picker field that behaves like the dropdown it replaces: the chosen
+  /// value lives in the screen's state, it is validated and saved with the
+  /// form, and the same message shows under it when nothing is chosen.
+  Widget _buildPickerField({
+    required String label,
+    required String hint,
+    required IconData icon,
+    required List<String> options,
+    required String? value,
+    required String errorMessage,
+    required VoidCallback onSaved,
+    required ValueChanged<String?> onChanged,
+    IconData? Function(String option)? iconBuilder,
+  }) {
+    return FormField<String>(
+      validator: (_) => value == null ? errorMessage : null,
+      onSaved: (_) => onSaved(),
+      builder: (state) {
+        return AppPickerField(
+          label: label,
+          value: value,
+          hint: hint,
+          prefixIcon: icon,
+          errorText: state.errorText,
+          onTap: () async {
+            final picked = await showPickerSheet<String>(
+              context,
+              title: label,
+              options: options,
+              selected: value,
+              iconBuilder: iconBuilder,
+            );
+            if (picked == null) return;
+            onChanged(picked);
+            state.didChange(picked);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildAttachment() {
+    final hasFile = _attachmentUrl != null;
+    final borderColor = hasFile ? AppColors.resolvedFg : AppColors.borderStrong;
+    final accent = _isUploadingAttachment
+        ? AppColors.primary
+        : hasFile
+        ? AppColors.resolvedFg
+        : AppColors.primary;
+    final isPdf = _attachmentFileName?.toLowerCase().endsWith('.pdf') ?? false;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Attachment',
+          style: AppText.caption.copyWith(color: AppColors.inkMuted),
+        ),
+        const SizedBox(height: AppSpacing.s1),
+        Material(
+          color: AppColors.surfaceCard,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: AppRadius.brMd,
+            side: BorderSide(color: borderColor, width: 1.5),
+          ),
+          child: InkWell(
+            onTap: _isUploadingAttachment ? null : _uploadAttachment,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 88),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.s4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isUploadingAttachment
+                          ? Icons.hourglass_top_rounded
+                          : hasFile
+                          ? Icons.check_circle_outline
+                          : Icons.cloud_upload_outlined,
+                      color: accent,
+                    ),
+                    const SizedBox(height: AppSpacing.s2),
+                    Text(
+                      _isUploadingAttachment
+                          ? 'Uploading attachment...'
+                          : _attachmentFileName ??
+                                'Tap to upload image or file',
+                      style: AppText.bodyStrong.copyWith(
+                        color: hasFile ? AppColors.resolvedFg : AppColors.ink,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
-
-              ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitForm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF6600),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        if (hasFile) ...[
+          const SizedBox(height: AppSpacing.s3),
+          isPdf
+              ? Container(
+                  padding: const EdgeInsets.all(AppSpacing.s4),
+                  decoration: BoxDecoration(
+                    color: AppColors.cancelledBg,
+                    borderRadius: AppRadius.brMd,
                   ),
-                  elevation: 2,
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Submit Ticket',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.picture_as_pdf,
+                        color: AppColors.cancelledFg,
+                      ),
+                      const SizedBox(width: AppSpacing.s3),
+                      Expanded(
+                        child: Text(
+                          _attachmentFileName ?? 'PDF File',
+                          style: AppText.bodyStrong.copyWith(
+                            color: AppColors.ink,
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+                )
+              : Container(
+                  height: 180,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: AppRadius.brMd,
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Image.network(
+                    _attachmentUrl!,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) {
+                        return child;
+                      }
+
+                      return const Center(child: CircularProgressIndicator());
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(
+                        child: Icon(
+                          Icons.broken_image,
+                          color: AppColors.inkFaint,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+          const SizedBox(height: AppSpacing.s2),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: _isUploadingAttachment ? null : _uploadAttachment,
+                icon: const Icon(Icons.swap_horiz),
+                label: const Text('Replace'),
               ),
-              const SizedBox(height: 20),
+              const Spacer(),
+              IconButton(
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                tooltip: 'Remove',
+                color: AppColors.cancelledFg,
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _isUploadingAttachment ? null : _removeAttachment,
+              ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Color(0xFF333333),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCard({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
         ],
-      ),
-      child: child,
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon, color: Colors.grey[600]),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF005CAB), width: 2),
-      ),
-      filled: true,
-      fillColor: Colors.grey[50],
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ],
     );
   }
 
   Widget _buildModeToggle() {
     return Container(
+      constraints: const BoxConstraints(minHeight: 44),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brMd,
+        border: Border.all(color: AppColors.borderStrong, width: 1.5),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _isAiMode = false),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: !_isAiMode
-                      ? const Color(0xFF005CAB)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.edit_note_rounded,
-                      color: !_isAiMode ? Colors.white : Colors.grey,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Fill Form',
-                      style: TextStyle(
-                        color: !_isAiMode ? Colors.white : Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
+      child: ClipRRect(
+        borderRadius: AppRadius.brMd,
+        child: Row(
+          children: [
+            Expanded(
+              child: _ModeSegment(
+                icon: Icons.edit_note_rounded,
+                label: 'Fill Form',
+                selected: !_isAiMode,
+                onTap: () => setState(() => _isAiMode = false),
               ),
             ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _isAiMode = true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: _isAiMode
-                      ? const Color(0xFF005CAB)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.auto_awesome,
-                      color: _isAiMode ? Colors.white : Colors.grey,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'AI Mode',
-                      style: TextStyle(
-                        color: _isAiMode ? Colors.white : Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
+            Expanded(
+              child: _ModeSegment(
+                icon: Icons.chat_bubble_outline,
+                label: 'Auto Fill',
+                selected: _isAiMode,
+                onTap: () => setState(() => _isAiMode = true),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildAiInputSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.s4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.auto_awesome,
-                    color: Color(0xFF005CAB),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Describe Your Issue',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Tell us what happened in your own words. AI will extract the details for you.',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _aiInputController,
-                maxLines: 5,
-                decoration: _inputDecoration(
-                  'e.g. My internet has been down since morning, I\'m at Puchong...',
+              Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryTint,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
                   Icons.chat_bubble_outline,
+                  size: 18,
+                  color: AppColors.primary,
                 ),
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isExtracting ? null : _extractDetails,
-                  icon: _isExtracting
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.auto_awesome, color: Colors.white),
-                  label: Text(
-                    _isExtracting ? 'Extracting...' : 'Extract Details',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF005CAB),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+              const SizedBox(width: AppSpacing.s2),
+              Expanded(
+                child: Text(
+                  'Describe Your Issue',
+                  style: AppText.heading.copyWith(color: AppColors.ink),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.s1),
+          Text(
+            'Tell us what happened in your own words. AI will extract the details for you.',
+            style: AppText.body.copyWith(color: AppColors.inkMuted),
+          ),
+          const SizedBox(height: AppSpacing.s3),
+          AppTextField(
+            label: '',
+            controller: _aiInputController,
+            maxLines: 5,
+            hint:
+                'e.g. My internet has been down since morning, I\'m at Puchong...',
+          ),
+          const SizedBox(height: AppSpacing.s3),
+          OutlinedButton.icon(
+            onPressed: _isExtracting ? null : _extractDetails,
+            icon: _isExtracting
+                ? const _ButtonSpinner(color: AppColors.primary)
+                : const Icon(Icons.fact_check_outlined),
+            label: Text(_isExtracting ? 'Extracting...' : 'Extract Details'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One half of the Fill Form / AI Mode toggle.
+class _ModeSegment extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeSegment({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppColors.onPrimary : AppColors.inkMuted;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? AppColors.primary : Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.s2,
+                vertical: AppSpacing.s3,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: color, size: 20),
+                  const SizedBox(width: AppSpacing.s2),
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: (selected ? AppText.bodyStrong : AppText.body)
+                          .copyWith(color: color),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-        const SizedBox(height: 16),
+      ),
+    );
+  }
+}
+
+/// 20px progress ring shown inside a button while its action runs.
+class _ButtonSpinner extends StatelessWidget {
+  final Color color;
+
+  const _ButtonSpinner({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 20,
+      height: 20,
+      child: CircularProgressIndicator(strokeWidth: 2, color: color),
+    );
+  }
+}
+
+/// Shown when the AI says the description is not about a service issue.
+class InvalidInputDialog extends StatelessWidget {
+  const InvalidInputDialog({super.key});
+
+  static const List<String> _examples = [
+    '"My internet is not working since this morning"',
+    '"The WiFi router keeps disconnecting"',
+    '"My TV box shows no signal"',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surfaceCard,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: AppRadius.brLg),
+      contentPadding: const EdgeInsets.all(AppSpacing.s6),
+      actionsPadding: const EdgeInsets.fromLTRB(
+        AppSpacing.s6,
+        0,
+        AppSpacing.s6,
+        AppSpacing.s6,
+      ),
+      // The button stays pinned below the scrolling message on short screens.
+      actions: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Try Again'),
+          ),
+        ),
       ],
+      scrollable: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: const BoxDecoration(
+                color: AppColors.primaryTint,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                size: 28,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.s4),
+          Text(
+            'Invalid Input',
+            textAlign: TextAlign.center,
+            style: AppText.title.copyWith(color: AppColors.ink),
+          ),
+          const SizedBox(height: AppSpacing.s2),
+          Text(
+            'Your description doesn\'t seem to be related to a service issue. '
+            'Please describe your actual problem, for example:',
+            textAlign: TextAlign.center,
+            style: AppText.body.copyWith(color: AppColors.inkMuted),
+          ),
+          const SizedBox(height: AppSpacing.s3),
+          for (final example in _examples) ...[
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.s3),
+              decoration: BoxDecoration(
+                color: AppColors.primaryTint,
+                borderRadius: AppRadius.brMd,
+              ),
+              child: Text(
+                example,
+                style: AppText.body.copyWith(color: AppColors.ink),
+              ),
+            ),
+            if (example != _examples.last)
+              const SizedBox(height: AppSpacing.s2),
+          ],
+        ],
+      ),
     );
   }
 }

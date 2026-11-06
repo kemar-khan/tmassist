@@ -5,7 +5,8 @@ import '../core/theme/app_tokens.dart';
 /// Labelled form field. A thin wrapper around [TextFormField], so existing
 /// controllers and validators work unchanged. The label sits above the field;
 /// the field itself uses the theme's input decoration. Password fields get a
-/// show/hide button.
+/// show/hide button. An empty label hides the label row (the hint then
+/// describes the field).
 class AppTextField extends StatefulWidget {
   final String label;
   final TextEditingController? controller;
@@ -65,11 +66,13 @@ class _AppTextFieldState extends State<AppTextField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          widget.label,
-          style: AppText.caption.copyWith(color: AppColors.inkMuted),
-        ),
-        const SizedBox(height: AppSpacing.s1),
+        if (widget.label.isNotEmpty) ...[
+          Text(
+            widget.label,
+            style: AppText.caption.copyWith(color: AppColors.inkMuted),
+          ),
+          const SizedBox(height: AppSpacing.s1),
+        ],
         TextFormField(
           controller: widget.controller,
           enabled: widget.enabled,

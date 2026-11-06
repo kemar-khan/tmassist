@@ -43,6 +43,14 @@ class AppColors {
   static const closedBg = Color(0xFFE2E8F0);
   static const cancelledFg = Color(0xFFB91C1C);
   static const cancelledBg = Color(0xFFFEE2E2);
+
+  // Chart colours (supervisor dashboard).
+  static const chartNew = Color(0xFFD97706);
+  static const chartAssigned = Color(0xFF005CAB);
+  static const chartProgress = Color(0xFF6D28D9);
+  static const chartResolved = Color(0xFF16A34A);
+  static const chartClosed = Color(0xFF64748B);
+  static const chartMuted = Color(0xFF6C9AC9);
 }
 
 class AppSpacing {

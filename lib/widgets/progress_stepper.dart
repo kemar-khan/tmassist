@@ -2,41 +2,54 @@ import 'package:flutter/material.dart';
 
 import '../core/theme/app_tokens.dart';
 
-const List<String> _stepStatuses = [
+/// Stored statuses behind the three steps, in order. Used to look up the
+/// timestamps passed to [VerticalStatusTimeline].
+const List<String> _stepStatuses = ['ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
+
+enum _StepState { done, current, pending }
+
+/// The five steps of the full lifecycle (supervisor view) and the stored
+/// status behind each, for looking up timestamps.
+const List<String> _lifecycleStatuses = [
   'NEW',
   'ASSIGNED',
   'IN_PROGRESS',
   'RESOLVED',
+  'CLOSED',
 ];
-const List<String> _stepLabels = ['New', 'Assigned', 'In Progress', 'Resolved'];
+const List<String> _lifecycleLabels = [
+  'New',
+  'Assigned',
+  'In Progress',
+  'Resolved',
+  'Closed',
+];
 
-enum _StepState { done, current, pending }
-
-/// Works out how each of the four steps looks for a stored status.
-/// Returns null for CANCELLED, which shows no stepper.
-List<_StepState>? _stepStates(String status) {
+/// How each of the five lifecycle steps looks for a stored status. CANCELLED
+/// returns null (no timeline). RESOLVED has the first four steps done and
+/// Closed still pending (no step is current); CLOSED has all five done;
+/// unknown values leave every step pending.
+List<_StepState>? _lifecycleStates(String status) {
   final value = status.trim().toUpperCase();
   if (value == 'CANCELLED') return null;
 
-  // CLOSED means the work is finished, so every step is done.
-  if (value == 'CLOSED') {
-    return List.filled(_stepStatuses.length, _StepState.done);
-  }
-
-  final current = _stepStatuses.indexOf(value);
-  return List.generate(_stepStatuses.length, (i) {
+  final current = _lifecycleStatuses.indexOf(value);
+  return List.generate(_lifecycleStatuses.length, (i) {
     if (current < 0) return _StepState.pending;
+    if (value == 'CLOSED') return _StepState.done;
+    if (value == 'RESOLVED') {
+      return i <= current ? _StepState.done : _StepState.pending;
+    }
     if (i < current) return _StepState.done;
     if (i == current) return _StepState.current;
     return _StepState.pending;
   });
 }
 
-/// The three steps of the horizontal stepper (the vertical timeline keeps
-/// its own four).
+/// The three steps shared by the horizontal stepper and the vertical timeline.
 const List<String> _horizontalLabels = ['Assigned', 'In Progress', 'Resolved'];
 
-/// How each of the three horizontal steps looks for a stored status.
+/// How each of the three steps looks for a stored status.
 /// Returns null for CANCELLED, which shows no stepper. NEW and unknown values
 /// leave every step pending.
 List<_StepState>? _horizontalStates(String status) {
@@ -183,85 +196,121 @@ class HorizontalStatusStepper extends StatelessWidget {
       Container(height: 2, color: done ? AppColors.primary : AppColors.border);
 }
 
-/// The same four steps stacked vertically, with an optional timestamp under
-/// each step that has been reached. [timestamps] is keyed by the stored status
-/// (`NEW`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`). Shows nothing for a
-/// CANCELLED ticket.
+/// The same three steps stacked vertically (Assigned, In Progress, Resolved),
+/// with an optional timestamp under each step that has been reached.
+/// [timestamps] is keyed by the stored status (`ASSIGNED`, `IN_PROGRESS`,
+/// `RESOLVED`). CLOSED shows every step done; NEW shows every step pending.
+/// Shows nothing for a CANCELLED ticket.
+///
+/// With [fullLifecycle] it shows five steps instead (New, Assigned,
+/// In Progress, Resolved, Closed), keyed in [timestamps] by the same stored
+/// statuses (`NEW` and `CLOSED` included).
 class VerticalStatusTimeline extends StatelessWidget {
   final String status;
   final Map<String, String> timestamps;
+  final bool fullLifecycle;
 
   const VerticalStatusTimeline({
     super.key,
     required this.status,
     this.timestamps = const {},
+    this.fullLifecycle = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final states = _stepStates(status);
+    final states = fullLifecycle
+        ? _lifecycleStates(status)
+        : _horizontalStates(status);
     if (states == null) return const SizedBox.shrink();
+    final labels = fullLifecycle ? _lifecycleLabels : _horizontalLabels;
+    final statuses = fullLifecycle ? _lifecycleStatuses : _stepStatuses;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < _stepLabels.length; i++)
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  width: 24,
-                  child: Column(
-                    children: [
-                      _stepCircle(states[i]),
-                      if (i < _stepLabels.length - 1)
-                        Expanded(
-                          child: Container(
-                            width: 2,
-                            color: states[i] == _StepState.done
-                                ? AppColors.primary
-                                : AppColors.border,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.s3),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      bottom: i < _stepLabels.length - 1 ? AppSpacing.s4 : 0,
-                    ),
+        for (var i = 0; i < labels.length; i++)
+          Semantics(
+            container: true,
+            excludeSemantics: true,
+            label: _stepSemantics(i, labels, states, timestamps[statuses[i]]),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 24,
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: AppSpacing.s1),
-                          child: Text(
-                            _stepLabels[i],
-                            style: _labelStyle(states[i]).copyWith(
-                              fontSize: AppText.body.fontSize,
-                              height: AppText.body.height,
-                            ),
-                          ),
-                        ),
-                        if (states[i] != _StepState.pending &&
-                            timestamps[_stepStatuses[i]] != null)
-                          Text(
-                            timestamps[_stepStatuses[i]]!,
-                            style: AppText.caption.copyWith(
-                              color: AppColors.inkFaint,
+                        _stepCircle(states[i]),
+                        if (i < labels.length - 1)
+                          Expanded(
+                            child: Container(
+                              width: 2,
+                              color: states[i] == _StepState.done
+                                  ? AppColors.primary
+                                  : AppColors.border,
                             ),
                           ),
                       ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: AppSpacing.s3),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        bottom: i < labels.length - 1 ? AppSpacing.s4 : 0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.s1),
+                            child: Text(
+                              labels[i],
+                              style: states[i] == _StepState.pending
+                                  ? AppText.bodyStrong.copyWith(
+                                      color: AppColors.inkFaint,
+                                    )
+                                  : AppText.bodyStrong.copyWith(
+                                      color: AppColors.ink,
+                                    ),
+                            ),
+                          ),
+                          if (states[i] != _StepState.pending &&
+                              timestamps[statuses[i]] != null)
+                            Text(
+                              timestamps[statuses[i]]!,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.inkMuted,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
       ],
     );
   }
+}
+
+String _stepSemantics(
+  int index,
+  List<String> labels,
+  List<_StepState> states,
+  String? timestamp,
+) {
+  final state = switch (states[index]) {
+    _StepState.done => 'completed',
+    _StepState.current => 'current step',
+    _StepState.pending => 'not reached',
+  };
+  final time = timestamp != null && states[index] != _StepState.pending
+      ? ', $timestamp'
+      : '';
+  return 'Step ${index + 1} of ${labels.length}: ${labels[index]}, $state$time';
 }

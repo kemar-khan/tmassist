@@ -3,6 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../widgets/app_buttons.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/section_card.dart';
 import 'speed_test_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -17,17 +21,7 @@ class ProfileScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text(
-          'My Profile',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [],
-      ),
+      appBar: AppBar(title: const Text('My Profile'), actions: []),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
@@ -39,11 +33,23 @@ class ProfileScreen extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.s4),
+                child: Text(
+                  'Error: ${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: AppText.body.copyWith(color: AppColors.cancelledFg),
+                ),
+              ),
+            );
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('User profile not found'));
+            return const EmptyState(
+              icon: Icons.person_off_outlined,
+              title: 'User profile not found',
+            );
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -53,260 +59,282 @@ class ProfileScreen extends StatelessWidget {
           final phone = data['phone'] ?? '-';
           final address = data['address'] ?? '-';
 
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                // Header Section with Avatar
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.only(bottom: 32, top: 16),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF005CAB),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(30),
-                      bottomRight: Radius.circular(30),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Stack(
-                        alignment: Alignment.bottomRight,
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: Colors.white,
-                            child: Text(
-                              name.isNotEmpty
-                                  ? name.substring(0, 1).toUpperCase()
-                                  : 'U',
-                              style: const TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF005CAB),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.8),
-                        ),
-                      ),
-                    ],
-                  ),
+          return ProfileContent(
+            name: name.toString(),
+            email: email.toString(),
+            phone: phone.toString(),
+            address: address.toString(),
+            onOpenSpeedTest: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SpeedTestScreen(),
                 ),
-
-                const SizedBox(height: 24),
-
-                // Info Cards Section
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Column(
-                    children: [
-                      _buildCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Contact Information',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF333333),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildInfoRow(
-                              Icons.phone_outlined,
-                              'Phone Number',
-                              phone,
-                            ),
-                            const Divider(height: 24),
-                            _buildInfoRow(
-                              Icons.location_on_outlined,
-                              'Address',
-                              address,
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      _buildCard(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const SpeedTestScreen(),
-                              ),
-                            );
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  backgroundColor: Color(0x1A005CAB),
-                                  child: Icon(
-                                    Icons.speed,
-                                    color: Color(0xFF005CAB),
-                                  ),
-                                ),
-                                SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Internet Speed Test',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF333333),
-                                        ),
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'Check your internet connection speed',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
-                                  color: Color(0xFF005CAB),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await FirebaseAuth.instance.signOut();
-                            Navigator.pushNamedAndRemoveUntil(
-                              context,
-                              '/login',
-                              (route) => false,
-                            );
-                          },
-                          icon: const Icon(Icons.logout),
-                          label: const Text(
-                            'Logout',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red[700],
-                            side: BorderSide(color: Colors.red[700]!, width: 2),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
+            onLogout: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/login',
+                (route) => false,
+              );
+            },
           );
         },
       ),
     );
   }
+}
 
-  // UI Helpers (UNCHANGED)
+/// The profile page body: account card, contact details, speed test entry and
+/// log out. Separate from [ProfileScreen] so it needs no Firebase to build.
+class ProfileContent extends StatelessWidget {
+  final String name;
+  final String email;
+  final String phone;
+  final String address;
+  final VoidCallback onOpenSpeedTest;
+  final VoidCallback onLogout;
 
-  Widget _buildCard({required Widget child}) {
+  const ProfileContent({
+    super.key,
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.address,
+    required this.onOpenSpeedTest,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      // The bottom inset (floating nav bar and safe area) is added to the
+      // scroll padding below.
+      bottom: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.s4,
+          AppSpacing.s4,
+          AppSpacing.s4,
+          MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionCard(
+              // SectionCard aligns its content to the start, so the column
+              // takes the full card width to centre its children.
+              child: SizedBox(
+                width: double.infinity,
+                child: Column(
+                  children: [
+                    ExcludeSemantics(
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryTint,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Image.asset(
+                            'assets/images/customer_icon.png',
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.contain,
+                            excludeFromSemantics: true,
+                            // A missing image falls back to the plain icon.
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                                  Icons.person,
+                                  size: 36,
+                                  color: AppColors.primary,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.s3),
+                    Text(
+                      name,
+                      textAlign: TextAlign.center,
+                      style: AppText.title.copyWith(color: AppColors.ink),
+                    ),
+                    const SizedBox(height: AppSpacing.s1),
+                    Text(
+                      email,
+                      textAlign: TextAlign.center,
+                      style: AppText.caption.copyWith(
+                        color: AppColors.inkFaint,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            SectionCard(
+              title: 'Contact Information',
+              child: Column(
+                children: [
+                  _ContactRow(
+                    icon: Icons.phone_outlined,
+                    label: 'Phone Number',
+                    value: phone,
+                    showDivider: true,
+                  ),
+                  _ContactRow(
+                    icon: Icons.location_on_outlined,
+                    label: 'Address',
+                    value: address,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            _SpeedTestTile(onTap: onOpenSpeedTest),
+            const SizedBox(height: AppSpacing.s2),
+            OutlinedButton.icon(
+              onPressed: onLogout,
+              style: AppButtonStyles.destructive,
+              icon: const Icon(Icons.logout),
+              label: const Text('Logout'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A contact detail: icon circle, label above the value.
+class _ContactRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool showDivider;
+
+  const _ContactRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.showDivider = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s3),
+      decoration: showDivider
+          ? const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            )
+          : null,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: AppColors.primaryTint,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 20, color: AppColors.primary),
+          ),
+          const SizedBox(width: AppSpacing.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                ),
+                Text(
+                  value,
+                  style: AppText.body.copyWith(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      child: child,
     );
   }
+}
 
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF005CAB).withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: const Color(0xFF005CAB), size: 20),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.bold,
-                ),
+class _SpeedTestTile extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SpeedTestTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Material(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.s4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryTint,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.speed,
+                      size: 20,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.s3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Internet Speed Test',
+                          style: AppText.bodyStrong.copyWith(
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        Text(
+                          'Check your internet connection speed',
+                          style: AppText.caption.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: AppColors.inkFaint),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF333333),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 }

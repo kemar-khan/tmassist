@@ -11,6 +11,14 @@ Future<T?> showPickerSheet<T>(
   T? selected,
   IconData? Function(T option)? iconBuilder,
   String Function(T option)? labelBuilder,
+
+  /// Optional second line under an option's label (null or empty for none).
+  /// When given, rows are taller and the label is the heading style.
+  String? Function(T option)? subtitleBuilder,
+
+  /// Shows a radio mark on the right of each row instead of a tick on the
+  /// selected one.
+  bool showRadio = false,
 }) {
   String labelOf(T option) =>
       labelBuilder != null ? labelBuilder(option) : option.toString();
@@ -60,6 +68,7 @@ Future<T?> showPickerSheet<T>(
                   final option = options[index];
                   final isSelected = option == selected;
                   final icon = iconBuilder?.call(option);
+                  final subtitle = subtitleBuilder?.call(option);
 
                   return Material(
                     color: isSelected
@@ -70,7 +79,9 @@ Future<T?> showPickerSheet<T>(
                       borderRadius: AppRadius.brMd,
                       onTap: () => Navigator.pop(sheetContext, option),
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 56),
+                        constraints: BoxConstraints(
+                          minHeight: subtitleBuilder != null ? 64 : 56,
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: AppSpacing.s3,
@@ -98,18 +109,46 @@ Future<T?> showPickerSheet<T>(
                                 const SizedBox(width: AppSpacing.s3),
                               ],
                               Expanded(
-                                child: Text(
-                                  labelOf(option),
-                                  style: isSelected
-                                      ? AppText.bodyStrong.copyWith(
-                                          color: AppColors.primary,
-                                        )
-                                      : AppText.body.copyWith(
-                                          color: AppColors.ink,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      labelOf(option),
+                                      style: subtitleBuilder != null
+                                          ? AppText.heading.copyWith(
+                                              color: isSelected
+                                                  ? AppColors.primary
+                                                  : AppColors.ink,
+                                            )
+                                          : isSelected
+                                          ? AppText.bodyStrong.copyWith(
+                                              color: AppColors.primary,
+                                            )
+                                          : AppText.body.copyWith(
+                                              color: AppColors.ink,
+                                            ),
+                                    ),
+                                    if (subtitle != null && subtitle.isNotEmpty)
+                                      Text(
+                                        subtitle,
+                                        style: AppText.caption.copyWith(
+                                          color: AppColors.inkMuted,
                                         ),
+                                      ),
+                                  ],
                                 ),
                               ),
-                              if (isSelected)
+                              if (showRadio)
+                                Icon(
+                                  isSelected
+                                      ? Icons.radio_button_checked
+                                      : Icons.radio_button_unchecked,
+                                  color: isSelected
+                                      ? AppColors.primary
+                                      : AppColors.borderStrong,
+                                )
+                              else if (isSelected)
                                 const Icon(
                                   Icons.check,
                                   size: 20,
