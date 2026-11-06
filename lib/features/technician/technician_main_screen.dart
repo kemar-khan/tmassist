@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../utils/ticket_filter_request.dart';
+import '../../widgets/app_bottom_nav.dart';
 import 'tech_home_screen.dart';
 import 'assigned_ticket_list_screen.dart';
-import 'tech_analytics_screen.dart'; // ADD THIS
+import 'tech_analytics_screen.dart';
 import 'profile_screen.dart';
 
 class TechnicianMainScreen extends StatefulWidget {
@@ -14,11 +16,30 @@ class TechnicianMainScreen extends StatefulWidget {
 class _TechnicianMainScreenState extends State<TechnicianMainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = const [
-    TechHomeScreen(),
-    AssignedTicketsScreen(),
-    TechAnalyticsScreen(), // ADD THIS
-    TechnicianProfileScreen(),
+  // Asks the Tasks tab to select a status filter (see TicketFilterRequest).
+  TicketFilterRequest? _tasksFilterRequest;
+
+  static const List<AppNavItem> _navItems = [
+    AppNavItem(
+      icon: Icons.home_outlined,
+      activeIcon: Icons.home_rounded,
+      label: 'Home',
+    ),
+    AppNavItem(
+      icon: Icons.assignment_outlined,
+      activeIcon: Icons.assignment_rounded,
+      label: 'Tasks',
+    ),
+    AppNavItem(
+      icon: Icons.bar_chart_outlined,
+      activeIcon: Icons.bar_chart_rounded,
+      label: 'Analytics',
+    ),
+    AppNavItem(
+      icon: Icons.person_outline,
+      activeIcon: Icons.person_rounded,
+      label: 'Profile',
+    ),
   ];
 
   void _onItemTapped(int index) {
@@ -27,45 +48,37 @@ class _TechnicianMainScreenState extends State<TechnicianMainScreen> {
     });
   }
 
+  void _openTasksWithStatus(String status) {
+    setState(() {
+      _tasksFilterRequest = TicketFilterRequest(
+        status: status,
+        id: (_tasksFilterRequest?.id ?? 0) + 1,
+      );
+      _selectedIndex = 1;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The bar floats over the body (extendBody); every tab pads its own
+    // content for it.
+    final screens = <Widget>[
+      TechHomeScreen(
+        onOpenTasksWithStatus: _openTasksWithStatus,
+        onOpenProfile: () => _onItemTapped(3),
+      ),
+      AssignedTicketsScreen(filterRequest: _tasksFilterRequest),
+      const TechAnalyticsScreen(),
+      const TechnicianProfileScreen(),
+    ];
+
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _screens),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: NavigationBar(
-            height: 56,
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: _onItemTapped,
-            backgroundColor: Colors.white,
-            indicatorColor: const Color(0xFF005CAB).withOpacity(0.10),
-            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.home_outlined, size: 20),
-                selectedIcon: Icon(Icons.home_rounded, size: 22),
-                label: 'Home',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.assignment_outlined, size: 20),
-                selectedIcon: Icon(Icons.assignment_rounded, size: 22),
-                label: 'Tasks',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.bar_chart_outlined, size: 20), // ADD THIS
-                selectedIcon: Icon(Icons.bar_chart_rounded, size: 22),
-                label: 'Analytics',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline, size: 20),
-                selectedIcon: Icon(Icons.person_rounded, size: 22),
-                label: 'Profile',
-              ),
-            ],
-          ),
-        ),
+      extendBody: true,
+      body: IndexedStack(index: _selectedIndex, children: screens),
+      bottomNavigationBar: AppBottomNav(
+        items: _navItems,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
       ),
     );
   }

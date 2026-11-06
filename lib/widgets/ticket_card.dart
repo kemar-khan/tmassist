@@ -14,6 +14,10 @@ class TicketCard extends StatelessWidget {
   /// spacing are left out.
   final String? description;
 
+  /// Shown under the description with a pin icon. When null or empty the row
+  /// is left out.
+  final String? address;
+
   /// The stored status, for example `ASSIGNED`.
   final String status;
   final String dateText;
@@ -29,6 +33,7 @@ class TicketCard extends StatelessWidget {
     required this.id,
     required this.title,
     this.description,
+    this.address,
     required this.status,
     required this.dateText,
     this.onTap,
@@ -89,6 +94,31 @@ class TicketCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppText.body.copyWith(color: AppColors.inkMuted),
+                  ),
+                ],
+                if (address != null && address!.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.s2),
+                  Row(
+                    children: [
+                      const ExcludeSemantics(
+                        child: Icon(
+                          Icons.location_on_outlined,
+                          size: 14,
+                          color: AppColors.accentStrong,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.s1),
+                      Expanded(
+                        child: Text(
+                          address!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: AppSpacing.s3),

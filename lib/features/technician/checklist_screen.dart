@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/checklist_service.dart';
+import '../../core/theme/app_tokens.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/empty_state.dart';
 
 class ChecklistScreen extends StatefulWidget {
   final String ticketId;
@@ -15,17 +18,32 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   bool _isGenerating = false;
   final ChecklistService _checklistService = ChecklistService();
 
+  // Created once: a stream made inside build() would re-subscribe (and flash
+  // a loading screen) on every setState, such as when generation starts.
+  late final Stream<DocumentSnapshot> _ticketStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticketStream = FirebaseFirestore.instance
+        .collection('tickets')
+        .doc(widget.ticketId)
+        .snapshots();
+  }
+
+  Map<String, dynamic> _asMap(Object? e) {
+    if (e is Map<String, dynamic>) return e;
+    if (e is Map) {
+      return Map<String, dynamic>.from(
+        e.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return <String, dynamic>{};
+  }
+
   Future<void> _handleGenerate(Map<String, dynamic> ticketData) async {
-    // NEW
     final checklistItems = List<Map<String, dynamic>>.from(
-      (ticketData['checklistItems'] ?? []).map((e) {
-        if (e is Map<String, dynamic>) return e;
-        if (e is Map)
-          return Map<String, dynamic>.from(
-            e.map((k, v) => MapEntry(k.toString(), v)),
-          );
-        return <String, dynamic>{};
-      }),
+      (ticketData['checklistItems'] ?? []).map(_asMap),
     );
     final hasExisting = checklistItems.isNotEmpty;
 
@@ -34,33 +52,24 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       final choice = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Regenerate Checklist',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
+          title: const Text('Regenerate Checklist'),
           content: const Text(
             'What would you like to do with the current checklist?',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, 'replace'),
-              child: const Text(
-                'Replace All',
-                style: TextStyle(color: Colors.red),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.cancelledFg,
               ),
+              child: const Text('Replace All'),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, 'add'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF005CAB),
+                backgroundColor: AppColors.primary,
               ),
-              child: const Text(
-                'Add New Items',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('Add New Items'),
             ),
           ],
         ),
@@ -88,9 +97,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       List<Map<String, String>>? existingItems;
       if (addToExisting) {
         final raw = List<Map<String, dynamic>>.from(
-          (ticketData['checklistItems'] ?? []).map(
-            (e) => Map<String, dynamic>.from(e),
-          ),
+          (ticketData['checklistItems'] ?? []).map(_asMap),
         );
         existingItems = raw
             .map(
@@ -104,14 +111,22 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
             .toList();
       }
 
-      final newItems = await _checklistService.generateChecklist(
-        ticketId: widget.ticketId,
-        category: category,
-        title: title,
-        description: description,
-        existingItems: existingItems,
-        addToExisting: addToExisting,
-      );
+      final newItems = await _checklistService
+          .generateChecklist(
+            ticketId: widget.ticketId,
+            category: category,
+            title: title,
+            description: description,
+            existingItems: existingItems,
+            addToExisting: addToExisting,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      // Nothing usable came back: keep the current checklist as it is.
+      if (newItems.isEmpty) {
+        if (mounted) _showGenerateError();
+        return;
+      }
 
       // Combine or replace
       final finalItems = addToExisting && existingItems != null
@@ -137,25 +152,26 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Checklist generated successfully!'),
-            backgroundColor: Colors.green,
-          ),
+        showAppSnack(
+          context,
+          'Checklist generated successfully!',
+          kind: SnackKind.success,
         );
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to generate checklist: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    } catch (_) {
+      // Timeout, network or AI errors: the checklist is left untouched.
+      if (mounted) _showGenerateError();
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
+  }
+
+  void _showGenerateError() {
+    showAppSnack(
+      context,
+      'Could not generate the checklist. Please try again.',
+      kind: SnackKind.error,
+    );
   }
 
   Future<void> _handleToggle(
@@ -176,482 +192,563 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppSnack(context, 'Failed to update: $e', kind: SnackKind.error);
       }
     }
+  }
+
+  Widget _messageScaffold(String title, Widget body) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: body,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tickets')
-          .doc(widget.ticketId)
-          .snapshots(),
+      stream: _ticketStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            backgroundColor: Colors.white,
-            appBar: AppBar(
-              title: const Text('Loading'),
-              backgroundColor: const Color(0xFF005CAB),
-              foregroundColor: Colors.white,
-            ),
-            body: const Center(child: CircularProgressIndicator()),
+        if (!snapshot.hasData &&
+            snapshot.connectionState == ConnectionState.waiting) {
+          return _messageScaffold(
+            'Checklist Generation',
+            const Center(child: CircularProgressIndicator()),
           );
         }
 
         if (snapshot.hasError) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Error')),
-            body: Center(child: Text('Error: ${snapshot.error}')),
+          return _messageScaffold(
+            'Error',
+            EmptyState(
+              icon: Icons.error_outline_rounded,
+              title: 'Error: ${snapshot.error}',
+            ),
           );
         }
 
         if (!snapshot.hasData || !snapshot.data!.exists) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Error')),
-            body: const Center(child: Text('Ticket not found')),
+          return _messageScaffold(
+            'Error',
+            const EmptyState(
+              icon: Icons.confirmation_number_outlined,
+              title: 'Ticket not found',
+            ),
           );
         }
 
         final data = snapshot.data!.data() as Map<String, dynamic>;
-        final ticketTitle = (data['title'] ?? '').toString();
-        final category = (data['category'] ?? '').toString();
+        final checklistItems = List.from(
+          data['checklistItems'] ?? [],
+        ).map(_asMap).toList();
+        final checklistDone = List.from(
+          data['checklistDone'] ?? [],
+        ).map((e) => e == true).toList();
 
-        final rawItems = List.from(data['checklistItems'] ?? []);
-        final checklistItems = rawItems.map((e) {
-          if (e is Map<String, dynamic>) return e;
-          if (e is Map)
-            return Map<String, dynamic>.from(
-              e.map((k, v) => MapEntry(k.toString(), v)),
-            );
-          return <String, dynamic>{};
-        }).toList();
-
-        final checklistDoneDynamic = List.from(data['checklistDone'] ?? []);
-        final checklistDone = checklistDoneDynamic
-            .map((e) => e == true)
-            .toList();
-
-        final hasChecklist = checklistItems.isNotEmpty;
-        final totalItems = checklistItems.length;
-        final doneItems = checklistDone.where((d) => d).length;
-        final progress = totalItems > 0 ? doneItems / totalItems : 0.0;
-
-        return Scaffold(
-          backgroundColor: const Color(0xFFF5F5F5),
-          body: Column(
-            children: [
-              // Header
-              Container(
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF005CAB),
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(50),
-                  ),
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 24, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: () => Navigator.pop(context),
-                              icon: const Icon(
-                                Icons.arrow_back_ios,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const Text(
-                              'Checklist Generation',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 48.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                ticketTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  category,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: LinearProgressIndicator(
-                                        value: progress,
-                                        backgroundColor: Colors.white
-                                            .withOpacity(0.2),
-                                        valueColor:
-                                            const AlwaysStoppedAnimation<Color>(
-                                              Colors.orange,
-                                            ),
-                                        minHeight: 8,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    '$doneItems/$totalItems',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '(${(progress * 100).toInt()}%)',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.8),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // Content
-              Expanded(
-                child: !hasChecklist
-                    ? _buildEmptyState(data)
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: totalItems + 1,
-                        itemBuilder: (context, index) {
-                          // Last item is the regenerate button
-                          if (index == totalItems) {
-                            return _buildRegenerateButton(data);
-                          }
-                          final item = checklistItems[index];
-                          final isDone = index < checklistDone.length
-                              ? checklistDone[index]
-                              : false;
-                          return _buildChecklistItem(
-                            index,
-                            item,
-                            isDone,
-                            checklistDone,
-                          );
-                        },
-                      ),
-              ),
-
-              // Done button
-              if (hasChecklist && progress == 1.0)
-                Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('TICKET READY FOR REPORT'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+        return ChecklistView(
+          ticketTitle: (data['title'] ?? '').toString(),
+          category: (data['category'] ?? '').toString(),
+          items: checklistItems,
+          done: checklistDone,
+          isGenerating: _isGenerating,
+          onToggle: (index, value) =>
+              _handleToggle(checklistDone, index, value),
+          onGenerate: () => _handleGenerate(data),
+          onReady: () => Navigator.pushNamed(
+            context,
+            '/tech/report',
+            arguments: widget.ticketId,
           ),
         );
       },
     );
   }
+}
 
-  Widget _buildChecklistItem(
-    int index,
-    Map<String, dynamic> item,
-    bool isDone,
-    List<bool> checklistDone,
-  ) {
-    final title = item['title']?.toString() ?? '';
-    final detail = item['detail']?.toString() ?? '';
-    final priority = item['priority']?.toString() ?? 'Medium';
-    final estimatedTime = item['estimatedTime']?.toString() ?? '10 mins';
+/// The checklist page. Separate from [ChecklistScreen] so it can be built
+/// without Firebase; the screen loads the data, generates and saves.
+class ChecklistView extends StatelessWidget {
+  final String ticketTitle;
 
-    Color priorityColor;
-    switch (priority.toLowerCase()) {
-      case 'high':
-        priorityColor = Colors.red;
-        break;
-      case 'medium':
-        priorityColor = Colors.orange;
-        break;
-      default:
-        priorityColor = Colors.green;
-    }
+  /// Empty when the ticket has no category (the pill is then hidden).
+  final String category;
+
+  /// Each item has `title`, `detail`, `priority` and `estimatedTime`.
+  final List<Map<String, dynamic>> items;
+  final List<bool> done;
+  final bool isGenerating;
+  final void Function(int index, bool value) onToggle;
+  final VoidCallback onGenerate;
+
+  /// Opens the service report ("Ticket Ready for Report").
+  final VoidCallback onReady;
+
+  const ChecklistView({
+    super.key,
+    required this.ticketTitle,
+    required this.category,
+    required this.items,
+    required this.done,
+    required this.isGenerating,
+    required this.onToggle,
+    required this.onGenerate,
+    required this.onReady,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = items.length;
+    final doneCount = done.where((d) => d).length;
+    final allDone = total > 0 && doneCount == total;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Checklist Generation')),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.s4,
+            AppSpacing.s4,
+            AppSpacing.s4,
+            MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+          ),
+          children: [
+            _ProgressCard(
+              title: ticketTitle,
+              category: category,
+              done: doneCount,
+              total: total,
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            if (total == 0)
+              _EmptyChecklistCard(
+                isGenerating: isGenerating,
+                onGenerate: onGenerate,
+              )
+            else ...[
+              for (var i = 0; i < total; i++) ...[
+                _ChecklistItemCard(
+                  title: items[i]['title']?.toString() ?? '',
+                  detail: items[i]['detail']?.toString() ?? '',
+                  priority: items[i]['priority']?.toString() ?? 'Medium',
+                  estimatedTime:
+                      items[i]['estimatedTime']?.toString() ?? '10 mins',
+                  isDone: i < done.length ? done[i] : false,
+                  onToggle: () =>
+                      onToggle(i, !(i < done.length ? done[i] : false)),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+              ],
+              OutlinedButton.icon(
+                onPressed: isGenerating ? null : onGenerate,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary, width: 2),
+                  textStyle: AppText.bodyStrong,
+                ),
+                icon: isGenerating
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(
+                  isGenerating ? 'Generating...' : 'Regenerate Checklist',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      bottomNavigationBar: allDone
+          ? DecoratedBox(
+              decoration: const BoxDecoration(
+                color: AppColors.surfaceCard,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.s4,
+                    AppSpacing.s3,
+                    AppSpacing.s4,
+                    AppSpacing.s4,
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: onReady,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.resolvedFg,
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Ticket Ready for Report'),
+                  ),
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+}
+
+class _ProgressCard extends StatelessWidget {
+  final String title;
+  final String category;
+  final int done;
+  final int total;
+
+  const _ProgressCard({
+    required this.title,
+    required this.category,
+    required this.done,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final complete = total > 0 && done == total;
+    final fraction = total == 0 ? 0.0 : done / total;
+    final summary = total == 0
+        ? '0 of 0'
+        : '$done of $total (${(fraction * 100).round()}%)';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(AppSpacing.s4),
       decoration: BoxDecoration(
-        color: isDone ? Colors.grey[50] : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDone ? Colors.green.withOpacity(0.2) : Colors.grey[200]!,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: AppText.heading.copyWith(color: AppColors.ink),
+                ),
+              ),
+              if (category.isNotEmpty) ...[
+                const SizedBox(width: AppSpacing.s2),
+                _Pill(
+                  label: category,
+                  foreground: AppColors.primary,
+                  background: AppColors.primaryTint,
+                  vertical: AppSpacing.s1,
+                  horizontal: AppSpacing.s3,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s3),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Progress',
+                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                ),
+              ),
+              Text(
+                summary,
+                style: AppText.caption.copyWith(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s2),
+          Semantics(
+            label: 'Checklist $done of $total done',
+            excludeSemantics: true,
+            child: ClipRRect(
+              borderRadius: AppRadius.brPill,
+              child: Container(
+                height: 8,
+                color: AppColors.border,
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: fraction,
+                  child: Container(
+                    color: complete ? AppColors.resolvedFg : AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Checkbox
-            GestureDetector(
-              onTap: () => _handleToggle(checklistDone, index, !isDone),
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDone ? Colors.green : Colors.transparent,
-                  border: Border.all(
-                    color: isDone ? Colors.green : Colors.grey[400]!,
-                    width: 2,
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final String label;
+  final Color foreground;
+  final Color background;
+  final double vertical;
+  final double horizontal;
+
+  const _Pill({
+    required this.label,
+    required this.foreground,
+    required this.background,
+    required this.vertical,
+    required this.horizontal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: vertical, horizontal: horizontal),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: AppRadius.brPill,
+      ),
+      child: Text(
+        label,
+        style: AppText.caption.copyWith(
+          color: foreground,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _ChecklistItemCard extends StatelessWidget {
+  final String title;
+  final String detail;
+  final String priority;
+  final String estimatedTime;
+  final bool isDone;
+  final VoidCallback onToggle;
+
+  const _ChecklistItemCard({
+    required this.title,
+    required this.detail,
+    required this.priority,
+    required this.estimatedTime,
+    required this.isDone,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color priorityFg;
+    final Color priorityBg;
+    switch (priority.toLowerCase()) {
+      case 'high':
+        priorityFg = AppColors.cancelledFg;
+        priorityBg = AppColors.cancelledBg;
+      case 'medium':
+        priorityFg = AppColors.newFg;
+        priorityBg = AppColors.newBg;
+      default:
+        priorityFg = AppColors.resolvedFg;
+        priorityBg = AppColors.resolvedBg;
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.s1,
+        AppSpacing.s2,
+        AppSpacing.s4,
+        AppSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            checked: isDone,
+            label: title,
+            excludeSemantics: true,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onToggle,
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: isDone ? AppColors.primary : AppColors.surfaceCard,
+                      borderRadius: AppRadius.brSm,
+                      border: isDone
+                          ? null
+                          : Border.all(color: AppColors.borderStrong, width: 2),
+                    ),
+                    child: isDone
+                        ? const Icon(
+                            Icons.check,
+                            size: 16,
+                            color: AppColors.onPrimary,
+                          )
+                        : null,
                   ),
                 ),
-                child: isDone
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : null,
               ),
             ),
-            const SizedBox(width: 12),
-
-            // Content
-            Expanded(
+          ),
+          const SizedBox(width: AppSpacing.s1),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.s2),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title + Priority badge
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: Text(
                           title,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: isDone
-                                ? Colors.grey
-                                : const Color(0xFF333333),
+                          style: AppText.bodyStrong.copyWith(
+                            color: isDone ? AppColors.inkFaint : AppColors.ink,
                             decoration: isDone
                                 ? TextDecoration.lineThrough
                                 : null,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: priorityColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: priorityColor.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Text(
-                          priority,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: priorityColor,
-                          ),
-                        ),
+                      const SizedBox(width: AppSpacing.s2),
+                      _Pill(
+                        label: priority,
+                        foreground: priorityFg,
+                        background: priorityBg,
+                        vertical: 2,
+                        horizontal: AppSpacing.s2,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-
-                  // Detail
+                  const SizedBox(height: AppSpacing.s1),
                   Text(
                     detail,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDone ? Colors.grey[400] : Colors.grey[700],
-                      height: 1.4,
+                    style: AppText.body.copyWith(
+                      color: isDone ? AppColors.inkFaint : AppColors.inkMuted,
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  // Time estimate
+                  const SizedBox(height: AppSpacing.s2),
                   Row(
                     children: [
-                      Icon(
-                        Icons.access_time_rounded,
-                        size: 13,
-                        color: Colors.grey[400],
+                      const ExcludeSemantics(
+                        child: Icon(
+                          Icons.access_time_rounded,
+                          size: 16,
+                          color: AppColors.inkMuted,
+                        ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        estimatedTime,
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                      const SizedBox(width: AppSpacing.s1),
+                      Expanded(
+                        child: Text(
+                          estimatedTime,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildRegenerateButton(Map<String, dynamic> data) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: OutlinedButton.icon(
-        onPressed: _isGenerating ? null : () => _handleGenerate(data),
-        icon: _isGenerating
-            ? const SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(
-                Icons.auto_awesome,
-                color: Color(0xFF005CAB),
-                size: 18,
+class _EmptyChecklistCard extends StatelessWidget {
+  final bool isGenerating;
+  final VoidCallback onGenerate;
+
+  const _EmptyChecklistCard({
+    required this.isGenerating,
+    required this.onGenerate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.s4,
+        AppSpacing.s8,
+        AppSpacing.s4,
+        AppSpacing.s6,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: AppColors.primaryTint,
+                shape: BoxShape.circle,
               ),
-        label: Text(
-          _isGenerating ? 'Generating...' : 'Regenerate Checklist',
-          style: const TextStyle(
-            color: Color(0xFF005CAB),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: const BorderSide(color: Color(0xFF005CAB)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(Map<String, dynamic> data) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.auto_awesome, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 24),
-            const Text(
-              'No checklist yet',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
+              child: const Icon(
+                Icons.checklist_rounded,
+                size: 36,
+                color: AppColors.primary,
               ),
             ),
-            const SizedBox(height: 12),
-            const Text(
+          ),
+          const SizedBox(height: AppSpacing.s4),
+          Text(
+            'No checklist yet',
+            textAlign: TextAlign.center,
+            style: AppText.heading.copyWith(color: AppColors.ink),
+          ),
+          const SizedBox(height: AppSpacing.s2),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Text(
               'Tap below to generate an AI-powered checklist customized for this specific issue.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+              style: AppText.body.copyWith(color: AppColors.inkMuted),
             ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                onPressed: _isGenerating ? null : () => _handleGenerate(data),
-                icon: _isGenerating
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.auto_awesome, color: Colors.white),
-                label: Text(
-                  _isGenerating ? 'Generating...' : 'GENERATE AI CHECKLIST',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF005CAB),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
-              ),
+          ),
+          const SizedBox(height: AppSpacing.s6),
+          ElevatedButton.icon(
+            onPressed: isGenerating ? null : onGenerate,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
             ),
-          ],
-        ),
+            icon: isGenerating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.onPrimary,
+                    ),
+                  )
+                : const Icon(Icons.checklist_rounded, size: 20),
+            label: Text(
+              isGenerating ? 'Generating...' : 'Generate AI Checklist',
+            ),
+          ),
+        ],
       ),
     );
   }

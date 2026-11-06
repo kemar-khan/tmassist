@@ -25,6 +25,42 @@ const List<String> _lifecycleLabels = [
   'Closed',
 ];
 
+/// The four steps of the technician view: Assigned, In Progress, Resolved,
+/// Closed.
+const List<String> _closedStatuses = [
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'RESOLVED',
+  'CLOSED',
+];
+const List<String> _closedLabels = [
+  'Assigned',
+  'In Progress',
+  'Resolved',
+  'Closed',
+];
+
+/// How each of the four steps looks for a stored status. CANCELLED returns
+/// null (no timeline). RESOLVED has the first three steps done and Closed
+/// still pending (no step is current); CLOSED has all four done; NEW and
+/// unknown values leave every step pending.
+List<_StepState>? _closedStates(String status) {
+  final value = status.trim().toUpperCase();
+  if (value == 'CANCELLED') return null;
+
+  final current = _closedStatuses.indexOf(value);
+  return List.generate(_closedStatuses.length, (i) {
+    if (current < 0) return _StepState.pending;
+    if (value == 'CLOSED') return _StepState.done;
+    if (value == 'RESOLVED') {
+      return i <= current ? _StepState.done : _StepState.pending;
+    }
+    if (i < current) return _StepState.done;
+    if (i == current) return _StepState.current;
+    return _StepState.pending;
+  });
+}
+
 /// How each of the five lifecycle steps looks for a stored status. CANCELLED
 /// returns null (no timeline). RESOLVED has the first four steps done and
 /// Closed still pending (no step is current); CLOSED has all five done;
@@ -210,21 +246,36 @@ class VerticalStatusTimeline extends StatelessWidget {
   final Map<String, String> timestamps;
   final bool fullLifecycle;
 
+  /// Four steps instead of three: Assigned, In Progress, Resolved, Closed
+  /// (timestamps keyed by `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`).
+  final bool withClosed;
+
   const VerticalStatusTimeline({
     super.key,
     required this.status,
     this.timestamps = const {},
     this.fullLifecycle = false,
+    this.withClosed = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final states = fullLifecycle
         ? _lifecycleStates(status)
+        : withClosed
+        ? _closedStates(status)
         : _horizontalStates(status);
     if (states == null) return const SizedBox.shrink();
-    final labels = fullLifecycle ? _lifecycleLabels : _horizontalLabels;
-    final statuses = fullLifecycle ? _lifecycleStatuses : _stepStatuses;
+    final labels = fullLifecycle
+        ? _lifecycleLabels
+        : withClosed
+        ? _closedLabels
+        : _horizontalLabels;
+    final statuses = fullLifecycle
+        ? _lifecycleStatuses
+        : withClosed
+        ? _closedStatuses
+        : _stepStatuses;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

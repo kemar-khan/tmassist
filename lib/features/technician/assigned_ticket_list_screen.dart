@@ -1,109 +1,159 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../utils/ticket_filter_request.dart';
+import '../../widgets/app_text_field.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/filter_chip_row.dart';
+import '../../widgets/ticket_card.dart';
 
 class AssignedTicketsScreen extends StatefulWidget {
-  const AssignedTicketsScreen({super.key});
+  /// A request from another tab to select a status filter. When its id
+  /// changes the screen selects the status, clears the search text and
+  /// scrolls the chip into view.
+  final TicketFilterRequest? filterRequest;
+
+  /// For tests: the tickets stream and technician id to use instead of the
+  /// Firestore query and the signed-in user.
+  final Stream<QuerySnapshot>? ticketsStream;
+  final String? technicianId;
+
+  const AssignedTicketsScreen({
+    super.key,
+    this.filterRequest,
+    this.ticketsStream,
+    this.technicianId,
+  });
 
   @override
   State<AssignedTicketsScreen> createState() => _AssignedTicketsScreenState();
 }
 
 class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
+  // The stored values the filter works on, in the order the chips appear.
+  static const List<String> _filterKeys = [
+    'All',
+    'ASSIGNED',
+    'IN_PROGRESS',
+    'RESOLVED',
+    'CLOSED',
+    'CANCELLED',
+  ];
+
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
   // 'All' excludes cancelled tickets; only the Cancelled chip shows them.
   String _selectedFilter = 'All';
 
+  // Bumped by every filter request, so the chip row scrolls the selected chip
+  // into view even when the requested status is already selected.
+  int _revealCount = 0;
+
+  String? _uid;
+
+  // Created once: a stream made inside build() would re-subscribe (and flash
+  // the spinner) on every keystroke or chip tap.
+  Stream<QuerySnapshot>? _ticketStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _uid = widget.technicianId ?? FirebaseAuth.instance.currentUser?.uid;
+    final uid = _uid;
+    if (uid == null) return;
+    _ticketStream =
+        widget.ticketsStream ??
+        FirebaseFirestore.instance
+            .collection('tickets')
+            .where('technicianId', isEqualTo: uid)
+            .orderBy('updatedAt', descending: true)
+            .snapshots();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(AssignedTicketsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final request = widget.filterRequest;
+    if (request == null || request.id == oldWidget.filterRequest?.id) return;
+
+    setState(() {
+      _selectedFilter = request.status;
+      _searchController.clear();
+      _searchQuery = "";
+      _revealCount++;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
+    final uid = _uid;
 
-    if (currentUser == null) {
+    if (uid == null || _ticketStream == null) {
       return Scaffold(
         appBar: AppBar(title: const Text("Error")),
-        body: const Center(child: Text("User not logged in")),
+        body: const EmptyState(
+          icon: Icons.person_off_outlined,
+          title: "User not logged in",
+        ),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text(
-          'My Tasks',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF005CAB),
-        foregroundColor: Colors.white,
-        elevation: 0,
+        title: const Text('My Tasks'),
+        automaticallyImplyLeading: false,
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Search Bar + filter chips
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: const Color(0xFF005CAB),
-            child: Column(
-              children: [
-                TextField(
-                  onChanged: (val) => setState(() => _searchQuery = val),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: "Search by ID or Title...",
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-                    prefixIcon: const Icon(Icons.search, color: Colors.white),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.15),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip('All', 'All'),
-                      _buildFilterChip('Assigned', 'ASSIGNED'),
-                      _buildFilterChip('In Progress', 'IN_PROGRESS'),
-                      _buildFilterChip('Resolved', 'RESOLVED'),
-                      _buildFilterChip('Closed', 'CLOSED'),
-                      _buildFilterChip(
-                        CancelledStatus.label,
-                        CancelledStatus.value,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.s4,
+              AppSpacing.s4,
+              AppSpacing.s4,
+              0,
+            ),
+            child: AppTextField(
+              label: '',
+              controller: _searchController,
+              onChanged: (val) => setState(() => _searchQuery = val),
+              hint: "Search by ID or Title...",
+              prefixIcon: Icons.search,
             ),
           ),
-
-          // Ticket List
+          const SizedBox(height: AppSpacing.s3),
+          FilterChipRow(
+            labels: [for (final key in _filterKeys) _filterLabel(key)],
+            selected: _filterLabel(_selectedFilter),
+            revealRequest: _revealCount,
+            onSelected: (label) {
+              final key = _filterKeys.firstWhere(
+                (k) => _filterLabel(k) == label,
+              );
+              setState(() => _selectedFilter = key);
+            },
+          ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('tickets')
-                  .where('technicianId', isEqualTo: currentUser.uid)
-                  .orderBy('updatedAt', descending: true)
-                  .snapshots(),
+              stream: _ticketStream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (!snapshot.hasData &&
+                    snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Error: ${snapshot.error}',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+                  return EmptyState(
+                    icon: Icons.error_outline_rounded,
+                    title: 'Error: ${snapshot.error}',
                   );
                 }
 
@@ -120,8 +170,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                   // 'All' never includes cancelled tickets (not active work).
                   // The Cancelled chip shows only this technician's own.
                   if (showingCancelled) {
-                    if (!isCancelled ||
-                        data['technicianId'] != currentUser.uid) {
+                    if (!isCancelled || data['technicianId'] != uid) {
                       return false;
                     }
                   } else if (isCancelled) {
@@ -160,9 +209,20 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                   return _buildEmptyState();
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                return ListView.separated(
+                  // The floating nav bar sits over the bottom of the screen.
+                  // Inside a Scaffold with extendBody, the body's bottom
+                  // padding already includes the bar and the device's safe
+                  // area, so only a gap is added here.
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.s4,
+                    AppSpacing.s4,
+                    AppSpacing.s4,
+                    MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+                  ),
                   itemCount: assignedTickets.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: AppSpacing.s3),
                   itemBuilder: (context, index) {
                     final doc = assignedTickets[index];
                     final data = doc.data() as Map<String, dynamic>;
@@ -184,7 +244,7 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
   ) {
     final title = (data['title'] ?? '').toString();
     final description = (data['description'] ?? '').toString();
-    final address = (data['address'] ?? 'Cyberjaya, Selangor').toString();
+    final address = (data['address'] ?? '').toString();
     final status = (data['status'] ?? 'ASSIGNED').toString().toUpperCase();
     final createdAt = data['createdAt'];
 
@@ -194,221 +254,75 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
       formattedDate = '${date.day}/${date.month}/${date.year}';
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.pushNamed(context, '/tech/ticket', arguments: ticketId);
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildStatusBadge(status),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  ticketId,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[400],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  title,
-                  style: CancelledStatus.titleStyle(
-                    const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF333333),
-                    ),
-                    status,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    height: 1.4,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 16,
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        address,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      "View Details",
-                      style: TextStyle(
-                        color: Color(0xFF005CAB),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const Icon(
-                      Icons.chevron_right,
-                      color: Color(0xFF005CAB),
-                      size: 18,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return TicketCard(
+      id: ticketId,
+      title: title,
+      description: description,
+      address: address,
+      status: status,
+      dateText: formattedDate,
+      onTap: () {
+        Navigator.pushNamed(context, '/tech/ticket', arguments: ticketId);
+      },
+      // A visual hint only: tapping anywhere on the card opens the job, and
+      // the job is started from Job Details.
+      action: status == 'ASSIGNED' ? const _StartJobHint() : null,
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    Color color;
-    String label;
-
-    switch (status) {
+  String _filterLabel(String value) {
+    switch (value) {
       case 'ASSIGNED':
-        color = Colors.blue;
-        label = 'ASSIGNED';
-        break;
+        return 'Assigned';
       case 'IN_PROGRESS':
-        color = Colors.purple;
-        label = 'IN PROGRESS';
-        break;
+        return 'In Progress';
       case 'RESOLVED':
-        color = Colors.green;
-        label = 'RESOLVED';
-        break;
+        return 'Resolved';
       case 'CLOSED':
-        color = Colors.grey;
-        label = 'CLOSED';
-        break;
+        return 'Closed';
       case 'CANCELLED':
-        color = CancelledStatus.textColor;
-        label = CancelledStatus.label.toUpperCase();
-        break;
+        return CancelledStatus.label;
       default:
-        color = Colors.orange;
-        label = status;
+        return value;
     }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: CancelledStatus.isCancelled(status)
-            ? CancelledStatus.backgroundColor
-            : color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _selectedFilter == value;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF005CAB),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        selected: isSelected,
-        onSelected: (_) => setState(() => _selectedFilter = value),
-        selectedColor: Colors.white,
-        backgroundColor: Colors.white.withOpacity(0.15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: isSelected ? Colors.white : Colors.white.withOpacity(0.25),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildEmptyState({
     String title = "No active tasks",
     String subtitle = "All your assigned tickets are completed or closed.",
   }) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.assignment_turned_in_outlined,
-            size: 80,
-            color: Colors.grey[300],
+    return EmptyState(
+      icon: Icons.assignment_turned_in_outlined,
+      title: title,
+      subtitle: subtitle,
+    );
+  }
+}
+
+/// "Start Job" shown on ASSIGNED cards. Not a button: the card's own tap opens
+/// the job.
+class _StartJobHint extends StatelessWidget {
+  const _StartJobHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.s3,
+            vertical: AppSpacing.s1,
           ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[500],
-            ),
+          decoration: BoxDecoration(
+            color: AppColors.accentTint,
+            borderRadius: AppRadius.brSm,
           ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: TextStyle(color: Colors.grey[400]),
-            textAlign: TextAlign.center,
+          child: Text(
+            'Start Job',
+            style: AppText.bodyStrong.copyWith(color: AppColors.accentStrong),
           ),
-        ],
+        ),
       ),
     );
   }

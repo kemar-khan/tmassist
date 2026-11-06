@@ -5,26 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../utils/week_utils.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/status_style.dart';
-
-/// Monday 00:00 of the week [now] falls in (the same week the supervisor Home
-/// "This week" chart uses).
-DateTime startOfCurrentWeek(DateTime now) {
-  final today = DateTime(now.year, now.month, now.day);
-  return today.subtract(Duration(days: now.weekday - 1));
-}
-
-/// Whether a ticket's report was submitted this week (Monday 00:00 up to
-/// [now]). The report's `submittedAt` is the moment the technician marked the
-/// ticket resolved.
-bool resolvedThisWeek(Object? submittedAt, DateTime now) {
-  if (submittedAt is! Timestamp) return false;
-  final date = submittedAt.toDate();
-  return !date.isBefore(startOfCurrentWeek(now)) && !date.isAfter(now);
-}
 
 /// The technician with the most tickets resolved this week (key
 /// `resolvedThisWeek`), or null when nobody resolved one. Ties go to the

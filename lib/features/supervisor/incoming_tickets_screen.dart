@@ -2,21 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../utils/ticket_filter_request.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/ticket_card.dart';
-
-/// Asks the Tickets tab to select a status filter. [id] must change for every
-/// new request, so asking for the same [status] again applies it again.
-/// [status] is one of the chip values: 'All', 'NEW', 'ASSIGNED',
-/// 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'CANCELLED'.
-class TicketFilterRequest {
-  final String status;
-  final int id;
-
-  const TicketFilterRequest({required this.status, required this.id});
-}
 
 class IncomingTicketsScreen extends StatefulWidget {
   /// When this changes (a different [TicketFilterRequest.id]), the screen
