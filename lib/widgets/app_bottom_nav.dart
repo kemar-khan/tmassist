@@ -36,14 +36,6 @@ class AppBottomNav extends StatelessWidget {
   /// Height of the navigation bar itself.
   static const double barHeight = 80;
 
-  /// Bottom padding that content OUTSIDE the Scaffold body needs so its last
-  /// item stays clear of the floating bar: bar height, the bar's own 16 margin
-  /// top and bottom, and the device's bottom safe area. Inside the body of a
-  /// `Scaffold(extendBody: true)`, `MediaQuery.paddingOf(context).bottom`
-  /// already includes all of this, so use that plus a gap instead.
-  static double clearance(BuildContext context) =>
-      barHeight + AppSpacing.s4 * 2 + MediaQuery.paddingOf(context).bottom;
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(

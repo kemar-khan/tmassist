@@ -11,7 +11,13 @@ DateTime startOfCurrentWeek(DateTime now) {
 /// [now]). The report's `submittedAt` is the moment the technician marked the
 /// ticket resolved.
 bool resolvedThisWeek(Object? submittedAt, DateTime now) {
-  if (submittedAt is! Timestamp) return false;
-  final date = submittedAt.toDate();
+  final DateTime date;
+  if (submittedAt is Timestamp) {
+    date = submittedAt.toDate();
+  } else if (submittedAt is DateTime) {
+    date = submittedAt;
+  } else {
+    return false;
+  }
   return !date.isBefore(startOfCurrentWeek(now)) && !date.isAfter(now);
 }

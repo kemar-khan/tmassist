@@ -26,7 +26,10 @@ class ReportPdfService {
     pw.ImageProvider? proofImage;
     if (proofUrl.isNotEmpty && !proofUrl.toLowerCase().endsWith('.pdf')) {
       try {
-        proofImage = await networkImage(proofUrl);
+        // A slow or broken link must not hold the export up for long.
+        proofImage = await networkImage(
+          proofUrl,
+        ).timeout(const Duration(seconds: 15));
       } catch (_) {
         proofImage = null;
       }
@@ -87,6 +90,8 @@ class ReportPdfService {
     final pdf = pw.Document();
     pdf.addPage(
       pw.MultiPage(
+        // A long report may need many pages; the default limit is 20.
+        maxPages: 200,
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 40),
         footer: (ctx) => pw.Container(
@@ -312,7 +317,60 @@ class ReportPdfService {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    await Printing.layoutPdf(
+      name: _fileName(reportNo),
+      onLayout: (format) async => pdf.save(),
+    );
+  }
+
+  /// A file name made only of letters, digits, dot, dash and underscore.
+  static String _fileName(String reportNo) {
+    final safe = reportNo.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    return 'Service-Report-$safe.pdf';
+  }
+
+  /// Text that the PDF's built-in font can draw. That font covers Latin-1
+  /// only, so common punctuation is replaced by its plain form, control
+  /// characters are dropped and any other character becomes "?" instead of
+  /// breaking the page. Very long unbroken words are split so they wrap, and
+  /// [maxLength] cuts text that sits in a table cell (a row cannot be split
+  /// across pages).
+  static String _safe(String text, {int? maxLength}) {
+    var out = text
+        .replaceAll(RegExp('[\u2018\u2019\u201A]'), "'")
+        .replaceAll(RegExp('[\u201C\u201D\u201E]'), '"')
+        .replaceAll(RegExp('[\u2013\u2014]'), '-')
+        .replaceAll('\u2026', '...')
+        .replaceAll('\u2022', '-')
+        .replaceAll('\t', ' ')
+        .replaceAll(RegExp('[\u200B-\u200D\uFEFF]'), '');
+
+    final buffer = StringBuffer();
+    for (final unit in out.runes) {
+      if (unit == 10) {
+        buffer.writeCharCode(unit);
+      } else if (unit < 32 || unit == 127) {
+        continue;
+      } else if (unit > 255) {
+        buffer.write('?');
+      } else {
+        buffer.writeCharCode(unit);
+      }
+    }
+    out = buffer.toString();
+
+    out = out.replaceAllMapped(RegExp(r'\S{40,}'), (m) {
+      final word = m.group(0)!;
+      return [
+        for (var i = 0; i < word.length; i += 40)
+          word.substring(i, i + 40 > word.length ? word.length : i + 40),
+      ].join(' ');
+    });
+
+    if (maxLength != null && out.length > maxLength) {
+      out = '${out.substring(0, maxLength)}...';
+    }
+    return out;
   }
 
   static String _date(Timestamp t) {
@@ -338,7 +396,7 @@ class ReportPdfService {
   );
 
   static pw.Widget _body(String text) => pw.Text(
-    text,
+    _safe(text),
     style: const pw.TextStyle(
       fontSize: 10.5,
       lineSpacing: 3,
@@ -350,7 +408,7 @@ class ReportPdfService {
     color: _lightBlue,
     padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
     child: pw.Text(
-      text,
+      _safe(text, maxLength: 400),
       style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
     ),
   );
@@ -362,7 +420,7 @@ class ReportPdfService {
   }) => pw.Padding(
     padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
     child: pw.Text(
-      text,
+      _safe(text, maxLength: 400),
       style: pw.TextStyle(
         fontSize: 9.5,
         fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
@@ -394,7 +452,7 @@ class ReportPdfService {
       pw.Container(height: 0.8, color: PdfColors.grey700),
       pw.SizedBox(height: 4),
       pw.Text(
-        name.isEmpty ? 'Name:' : 'Name: $name',
+        name.isEmpty ? 'Name:' : 'Name: ${_safe(name, maxLength: 80)}',
         style: const pw.TextStyle(fontSize: 9),
       ),
       pw.Text(

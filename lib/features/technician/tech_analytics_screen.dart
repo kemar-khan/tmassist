@@ -25,13 +25,14 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
   bool _loaded = false;
   Object? _error;
 
-  // When each resolved ticket's report was submitted, fetched once per ticket.
-  final Map<String, DateTime> _submittedAt = {};
-  final Set<String> _requestedReports = {};
+  // When each resolved ticket's report was submitted. Shared with the Home
+  // tab, so every report is read once between them.
+  final ReportDateCache _reports = ReportDateCache.instance;
 
   @override
   void initState() {
     super.initState();
+    _reports.addListener(_onReportDates);
     _listen();
   }
 
@@ -52,7 +53,7 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
               _loaded = true;
               _error = null;
             });
-            _fetchReports();
+            _requestReports();
           },
           onError: (e) {
             if (!mounted) return;
@@ -63,32 +64,27 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
 
   @override
   void dispose() {
+    _reports.removeListener(_onReportDates);
     _sub?.cancel();
     super.dispose();
   }
 
   static const _resolvedStatuses = {'RESOLVED', 'CLOSED'};
 
-  /// Reads the reports of the resolved tickets, once each, for the average
-  /// resolution time.
-  Future<void> _fetchReports() async {
-    final ids = <String>[];
+  void _onReportDates() {
+    if (mounted) setState(() {});
+  }
+
+  /// Asks the shared cache for the reports of the resolved tickets, for the
+  /// average resolution time.
+  void _requestReports() {
+    final wanted = <String, String>{};
     for (final doc in _docs) {
       final data = doc.data() as Map<String, dynamic>;
       final status = (data['status'] ?? '').toString().toUpperCase();
-      if (!_resolvedStatuses.contains(status)) continue;
-      if (_requestedReports.add(doc.id)) ids.add(doc.id);
+      if (_resolvedStatuses.contains(status)) wanted[doc.id] = status;
     }
-    if (ids.isEmpty) return;
-
-    try {
-      final dates = await fetchReportSubmittedDates(ids);
-      if (!mounted) return;
-      setState(() => _submittedAt.addAll(dates));
-    } catch (_) {
-      // Let a later update try these again.
-      _requestedReports.removeAll(ids);
-    }
+    _reports.ensure(wanted);
   }
 
   @override
@@ -171,7 +167,7 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
       final data = doc.data() as Map<String, dynamic>;
       final status = (data['status'] ?? '').toString().toUpperCase();
       if (!_resolvedStatuses.contains(status)) continue;
-      final submitted = _submittedAt[doc.id];
+      final submitted = _reports[doc.id];
       final createdAt = data['createdAt'];
       if (submitted == null || createdAt is! Timestamp) continue;
       final taken = submitted.difference(createdAt.toDate());
@@ -571,21 +567,12 @@ class _AreaCard extends StatelessWidget {
               excludeSemantics: true,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Each column is wide enough for its area name; when they
-                  // do not all fit the chart scrolls sideways.
-                  final minSlot = MediaQuery.textScalerOf(context).scale(56);
+                  // At most five columns share the card width equally; the
+                  // area names wrap to two lines under them.
                   const gap = AppSpacing.s3;
                   final n = counts.length;
-                  final fit = (constraints.maxWidth - gap * (n - 1)) / n;
-                  final slot = math.max(minSlot, fit);
-                  final chart = _chart(slot, gap);
-                  final needed = slot * n + gap * (n - 1);
-                  return needed > constraints.maxWidth
-                      ? SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: chart,
-                        )
-                      : Center(child: chart);
+                  final slot = (constraints.maxWidth - gap * (n - 1)) / n;
+                  return Center(child: _chart(slot, gap));
                 },
               ),
             ),

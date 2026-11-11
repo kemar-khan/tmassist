@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:signature/signature.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/cloudinary_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/image_picker_helper.dart';
+import '../../utils/photo_check.dart';
 import '../../core/services/report_pdf_service.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/dashed_border.dart';
@@ -16,7 +18,15 @@ import '../../widgets/section_card.dart';
 class ReportScreen extends StatefulWidget {
   final String ticketId;
 
-  const ReportScreen({super.key, required this.ticketId});
+  /// A proof photo that Android kept after killing the app (see
+  /// recoverLostPhoto); it goes through the normal upload once data has loaded.
+  final String? recoveredPhotoPath;
+
+  const ReportScreen({
+    super.key,
+    required this.ticketId,
+    this.recoveredPhotoPath,
+  });
 
   @override
   State<ReportScreen> createState() => _ReportScreenState();
@@ -91,10 +101,22 @@ class _ReportScreenState extends State<ReportScreen> {
 
         _isLoading = false;
       });
+      _handleRecoveredPhoto();
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
     }
+  }
+
+  // Runs the normal upload for a photo recovered after the app was killed.
+  void _handleRecoveredPhoto() {
+    final path = widget.recoveredPhotoPath;
+    if (path == null || path.isEmpty) return;
+    showAppSnack(
+      context,
+      'Your photo was recovered. Please sign again before submitting.',
+    );
+    _uploadProofFile(XFile(path));
   }
 
   /// The report can be generated only when every checklist item of the ticket
@@ -209,15 +231,34 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _uploadProof() async {
     if (_isUploadingProof) return;
-    final picked = await pickImageWithChoice(context);
+    final picked = await pickImageWithChoice(
+      context,
+      purpose: 'report',
+      ticketId: widget.ticketId,
+    );
     if (!mounted) return;
     if (picked == null) {
       showAppSnack(context, 'No photo selected');
       return;
     }
+    await _uploadProofFile(picked);
+  }
 
+  Future<void> _uploadProofFile(XFile picked) async {
+    if (_isUploadingProof) return;
     setState(() => _isUploadingProof = true);
     try {
+      final bytes = await picked.length();
+      final name = picked.name.isNotEmpty ? picked.name : picked.path;
+      if (!isAcceptableProofPhoto(fileName: name, bytes: bytes)) {
+        if (!mounted) return;
+        showAppSnack(
+          context,
+          'Please choose an image under 5 MB.',
+          kind: SnackKind.error,
+        );
+        return;
+      }
       final url = await CloudinaryService().uploadFromPath(picked.path);
       if (!mounted) return;
       setState(() => _proofUrl = url);

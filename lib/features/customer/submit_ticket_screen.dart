@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/app_text_field.dart';
@@ -13,7 +14,11 @@ import '../../core/services/ai_extraction_service.dart';
 import '../../core/constants/service_areas.dart';
 
 class SubmitTicketScreen extends StatefulWidget {
-  const SubmitTicketScreen({super.key});
+  /// A photo that Android kept after killing the app (see recoverLostPhoto);
+  /// it is uploaded as the attachment when the screen opens.
+  final String? recoveredPhotoPath;
+
+  const SubmitTicketScreen({super.key, this.recoveredPhotoPath});
 
   @override
   State<SubmitTicketScreen> createState() => _SubmitTicketScreenState();
@@ -148,14 +153,30 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     }
   }
 
+  @override
+  void initState() {
+    super.initState();
+    final path = widget.recoveredPhotoPath;
+    if (path != null && path.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showAppSnack(context, 'Your photo was recovered.');
+        _uploadAttachmentFile(XFile(path));
+      });
+    }
+  }
+
   Future<void> _uploadAttachment() async {
-    final picked = await pickImageWithChoice(context);
+    final picked = await pickImageWithChoice(context, purpose: 'ticket');
     if (!mounted) return;
     if (picked == null) {
       showAppSnack(context, 'No photo selected');
       return;
     }
+    await _uploadAttachmentFile(picked);
+  }
 
+  Future<void> _uploadAttachmentFile(XFile picked) async {
     setState(() => _isUploadingAttachment = true);
 
     try {

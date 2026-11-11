@@ -8,6 +8,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../widgets/app_buttons.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/section_card.dart';
+import '../../utils/report_dates.dart';
 import 'coverage_areas_controller.dart';
 
 class TechnicianProfileScreen extends StatefulWidget {
@@ -96,6 +97,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> {
   }
 
   Future<void> _logout() async {
+    ReportDateCache.instance.clear();
     await FirebaseAuth.instance.signOut();
     if (mounted) {
       Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);

@@ -1,7 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart'; // TEMP-DEBUG [CHECKLIST] (for debugPrint)
+import 'package:flutter/foundation.dart'; // kDebugMode, debugPrint
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '/config/app_constants.dart';
+
+/// TEMP-DEBUG [CHECKLIST] output: the text sent to Gemini and what comes back.
+/// Printed only in debug builds, in pieces so long responses are not cut off.
+/// It never includes the API key or any header: only prompt and response text.
+void _dbg(String message) {
+  if (kDebugMode) debugPrint(message);
+}
 
 class ChecklistService {
   late final GenerativeModel _model;
@@ -154,7 +161,7 @@ class ChecklistService {
         ]))
           return 'intermittent';
 
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK default subcategory fiber_loss (no network keyword matched)',
         ); // TEMP-DEBUG [CHECKLIST]
         return 'fiber_loss'; // default network
@@ -193,7 +200,7 @@ class ChecklistService {
         ]))
           return 'cable_damage';
 
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK default subcategory ont_failure (no hardware keyword matched)',
         ); // TEMP-DEBUG [CHECKLIST]
         return 'ont_failure'; // default hardware
@@ -242,13 +249,13 @@ class ChecklistService {
         ]))
           return 'dns_issue';
 
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK default subcategory pppoe_auth (no software keyword matched)',
         ); // TEMP-DEBUG [CHECKLIST]
         return 'pppoe_auth'; // default software
 
       default:
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK subcategory general (category "$category" is not network/hardware/software)',
         ); // TEMP-DEBUG [CHECKLIST]
         return 'general';
@@ -639,7 +646,7 @@ Safety Notes:
 
       // DEFAULT / OTHER
       default:
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK default knowledge base entry (no entry for subcategory "$subcategory")',
         ); // TEMP-DEBUG [CHECKLIST]
         return '''
@@ -686,7 +693,7 @@ Safety Notes:
           .get();
 
       if (ticketSnapshot.docs.isEmpty) {
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK (similar-tickets context: no RESOLVED tickets for category $category)',
         ); // TEMP-DEBUG [CHECKLIST]
         return 'No similar resolved tickets found for this category.';
@@ -739,7 +746,7 @@ Safety Notes:
       }
 
       if (count == 0) {
-        debugPrint(
+        _dbg(
           '[CHECKLIST] USING FALLBACK (similar-tickets context: resolved tickets found but none had a report with rootCause/stepsTaken)',
         ); // TEMP-DEBUG [CHECKLIST]
         return 'No similar resolved tickets with resolution details found.';
@@ -748,12 +755,12 @@ Safety Notes:
       return buffer.toString();
     } catch (e, st) {
       // TEMP-DEBUG [CHECKLIST] start
-      debugPrint('[CHECKLIST] ERROR in _getSimilarTicketsContext: $e');
-      debugPrint('[CHECKLIST] STACK $st');
-      debugPrint(
+      _dbg('[CHECKLIST] ERROR in _getSimilarTicketsContext: $e');
+      _dbg('[CHECKLIST] STACK $st');
+      _dbg(
         '[CHECKLIST] ERROR ... returning fallback context string "Could not retrieve similar tickets."',
       );
-      debugPrint('[CHECKLIST] USING FALLBACK (similar-tickets context)');
+      _dbg('[CHECKLIST] USING FALLBACK (similar-tickets context)');
       // TEMP-DEBUG [CHECKLIST] end
       return 'Could not retrieve similar tickets.';
     }
@@ -775,9 +782,9 @@ Safety Notes:
     final knowledgeBase = _getKnowledgeBase(subcategory);
 
     // TEMP-DEBUG [CHECKLIST] start
-    debugPrint('[CHECKLIST] category=$category subcategory=$subcategory');
-    debugPrint('[CHECKLIST] KB length=${knowledgeBase.length}');
-    debugPrint(
+    _dbg('[CHECKLIST] category=$category subcategory=$subcategory');
+    _dbg('[CHECKLIST] KB length=${knowledgeBase.length}');
+    _dbg(
       '[CHECKLIST] KB first 120 chars: ${knowledgeBase.substring(0, knowledgeBase.length < 120 ? knowledgeBase.length : 120).replaceAll('\n', ' ')}',
     );
     // TEMP-DEBUG [CHECKLIST] end
@@ -849,28 +856,28 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
 
     try {
       // TEMP-DEBUG [CHECKLIST] start
-      debugPrint('[CHECKLIST] >>> PROMPT');
+      _dbg('[CHECKLIST] >>> PROMPT');
       for (final line in prompt.split('\n')) {
-        debugPrint('[CHECKLIST] $line');
+        _dbg('[CHECKLIST] $line');
       }
-      debugPrint('[CHECKLIST] <<< END PROMPT');
+      _dbg('[CHECKLIST] <<< END PROMPT');
       // TEMP-DEBUG [CHECKLIST] end
       final content = [Content.text(prompt)];
       final stopwatch = Stopwatch()..start();
       final response = await _model.generateContent(content);
       stopwatch.stop();
-      print(
+      _dbg(
         'DEBUG [Checklist] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',
       );
-      print('DEBUG [Checklist] Subcategory detected: $subcategory');
+      _dbg('DEBUG [Checklist] Subcategory detected: $subcategory');
       final responseText = response.text ?? '';
 
       // TEMP-DEBUG [CHECKLIST] start
-      debugPrint('[CHECKLIST] >>> RAW RESPONSE');
+      _dbg('[CHECKLIST] >>> RAW RESPONSE');
       for (final line in responseText.split('\n')) {
-        debugPrint('[CHECKLIST] $line');
+        _dbg('[CHECKLIST] $line');
       }
-      debugPrint('[CHECKLIST] <<< END RESPONSE');
+      _dbg('[CHECKLIST] <<< END RESPONSE');
       // TEMP-DEBUG [CHECKLIST] end
 
       final cleaned = responseText
@@ -889,9 +896,9 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
       final List<dynamic> parsed = _parseJsonArray(jsonString);
 
       // TEMP-DEBUG [CHECKLIST] start
-      debugPrint('[CHECKLIST] parsed ${parsed.length} item(s)');
+      _dbg('[CHECKLIST] parsed ${parsed.length} item(s)');
       if (parsed.isEmpty) {
-        debugPrint(
+        _dbg(
           '[CHECKLIST] WARNING parser matched 0 items; the checklist returned is EMPTY (no fallback list exists)',
         );
       }
@@ -912,9 +919,9 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
       }).toList();
     } catch (e, st) {
       // TEMP-DEBUG [CHECKLIST] start
-      debugPrint('[CHECKLIST] ERROR in generateChecklist: $e');
-      debugPrint('[CHECKLIST] STACK $st');
-      debugPrint(
+      _dbg('[CHECKLIST] ERROR in generateChecklist: $e');
+      _dbg('[CHECKLIST] STACK $st');
+      _dbg(
         '[CHECKLIST] ERROR ... no fallback checklist exists; rethrowing "Checklist generation failed"',
       );
       // TEMP-DEBUG [CHECKLIST] end

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../utils/image_picker_helper.dart';
+import '../../utils/pending_photo.dart';
 import '../../utils/ticket_filter_request.dart';
 import '../../widgets/app_bottom_nav.dart';
 import 'tech_home_screen.dart';
@@ -15,6 +17,21 @@ class TechnicianMainScreen extends StatefulWidget {
 
 class _TechnicianMainScreenState extends State<TechnicianMainScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recoverPhoto());
+  }
+
+  // After Android killed the app during the camera: reopen the report the
+  // photo was for. Runs once per app start; any failure is ignored.
+  Future<void> _recoverPhoto() async {
+    final RecoveredPhoto? photo = await recoverLostPhoto();
+    if (!mounted || photo == null) return;
+    if (photo.purpose != 'report' || photo.ticketId == null) return;
+    Navigator.pushNamed(context, '/tech/report', arguments: photo);
+  }
 
   // Asks the Tasks tab to select a status filter (see TicketFilterRequest).
   TicketFilterRequest? _tasksFilterRequest;

@@ -1,0 +1,30 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:tmassist/utils/photo_check.dart';
+
+void main() {
+  bool ok(String name, int bytes) =>
+      isAcceptableProofPhoto(fileName: name, bytes: bytes);
+
+  test('accepts the listed image types, any case', () {
+    for (final n in ['a.jpg', 'a.JPEG', 'a.png', 'a.WebP', 'a.heic']) {
+      expect(ok(n, 1000), isTrue, reason: n);
+    }
+  });
+
+  test('rejects other types and names without an extension', () {
+    for (final n in ['a.pdf', 'a.gif', 'a.mp4', 'a', 'a.', 'jpg']) {
+      expect(ok(n, 1000), isFalse, reason: n);
+    }
+  });
+
+  test('size limit is 5 MB inclusive; empty files are rejected', () {
+    expect(ok('a.jpg', maxProofPhotoBytes), isTrue);
+    expect(ok('a.jpg', maxProofPhotoBytes + 1), isFalse);
+    expect(ok('a.jpg', 0), isFalse);
+  });
+
+  test('only the last extension counts', () {
+    expect(ok('photo.pdf.jpg', 10), isTrue);
+    expect(ok('photo.jpg.exe', 10), isFalse);
+  });
+}

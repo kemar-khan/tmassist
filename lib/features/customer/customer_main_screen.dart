@@ -2,6 +2,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../utils/image_picker_helper.dart';
+import '../../utils/pending_photo.dart';
+
 import '../../widgets/app_bottom_nav.dart';
 import 'customer_home_screen.dart';
 import 'my_tickets_screen.dart';
@@ -16,6 +19,20 @@ class CustomerMainScreen extends StatefulWidget {
 
 class _CustomerMainScreenState extends State<CustomerMainScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recoverPhoto());
+  }
+
+  // After Android killed the app during the camera: reopen Submit Ticket with
+  // the photo attached. Runs once per app start; any failure is ignored.
+  Future<void> _recoverPhoto() async {
+    final RecoveredPhoto? photo = await recoverLostPhoto();
+    if (!mounted || photo == null || photo.purpose != 'ticket') return;
+    Navigator.pushNamed(context, '/customer/submit', arguments: photo);
+  }
 
   static const List<AppNavItem> _navItems = [
     AppNavItem(

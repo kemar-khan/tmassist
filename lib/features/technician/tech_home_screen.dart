@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
 import '../../utils/category_icons.dart';
+import '../../utils/report_dates.dart';
 import '../../utils/week_utils.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/header_icon_badge.dart';
@@ -111,14 +112,14 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
   bool _ticketsLoaded = false;
   Object? _error;
 
-  // When each resolved ticket's report was submitted (reports/{ticketId}
-  // `submittedAt`), fetched once per ticket and kept.
-  final Map<String, Object?> _submittedAt = {};
-  final Set<String> _requestedReports = {};
+  // When each resolved ticket's report was submitted. Shared with the
+  // Analytics tab, so every report is read once between them.
+  final ReportDateCache _reports = ReportDateCache.instance;
 
   @override
   void initState() {
     super.initState();
+    _reports.addListener(_onReportDates);
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -148,7 +149,7 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
               _ticketsLoaded = true;
               _error = null;
             });
-            _fetchReports();
+            _requestReports();
           },
           onError: (e) {
             if (!mounted) return;
@@ -159,18 +160,23 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
 
   @override
   void dispose() {
+    _reports.removeListener(_onReportDates);
     _userSub?.cancel();
     _ticketSub?.cancel();
     super.dispose();
   }
 
-  /// Reads the reports of tickets that may have been resolved this week.
-  /// A resolved ticket's `updatedAt` is never earlier than its report's
-  /// `submittedAt`, so tickets last updated before this week are skipped.
-  /// Each report is fetched once, in batches by document id.
-  Future<void> _fetchReports() async {
+  void _onReportDates() {
+    if (mounted) setState(() {});
+  }
+
+  /// Asks the shared cache for the reports of tickets that may have been
+  /// resolved this week. A resolved ticket's `updatedAt` is never earlier than
+  /// its report's `submittedAt`, so tickets last updated before this week are
+  /// skipped.
+  void _requestReports() {
     final weekStart = startOfCurrentWeek(DateTime.now());
-    final ids = <String>[];
+    final wanted = <String, String>{};
     for (final doc in _docs) {
       final data = doc.data() as Map<String, dynamic>;
       final status = (data['status'] ?? '').toString().toUpperCase();
@@ -179,28 +185,9 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
       if (updatedAt is Timestamp && updatedAt.toDate().isBefore(weekStart)) {
         continue;
       }
-      if (_requestedReports.add(doc.id)) ids.add(doc.id);
+      wanted[doc.id] = status;
     }
-    if (ids.isEmpty) return;
-
-    for (var i = 0; i < ids.length; i += 30) {
-      final chunk = ids.sublist(i, i + 30 > ids.length ? ids.length : i + 30);
-      try {
-        final snap = await FirebaseFirestore.instance
-            .collection('reports')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .get();
-        if (!mounted) return;
-        setState(() {
-          for (final doc in snap.docs) {
-            _submittedAt[doc.id] = doc.data()['submittedAt'];
-          }
-        });
-      } catch (_) {
-        // Let a later update try these again.
-        _requestedReports.removeAll(chunk);
-      }
-    }
+    _reports.ensure(wanted);
   }
 
   TechTicketItem _toItem(QueryDocumentSnapshot doc) {
@@ -256,9 +243,7 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
       final resolvedDates = <DateTime>[
         for (final t in tickets)
           if (t.status == 'RESOLVED' || t.status == 'CLOSED')
-            if (_submittedAt[t.id] is Timestamp &&
-                resolvedThisWeek(_submittedAt[t.id], now))
-              (_submittedAt[t.id]! as Timestamp).toDate(),
+            if (resolvedThisWeek(_reports[t.id], now)) _reports[t.id]!,
       ];
 
       child = TechHomeContent(
@@ -624,11 +609,10 @@ class _UpNextCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'UP NEXT',
+                        'Up Next',
                         style: AppText.caption.copyWith(
                           color: AppColors.primary,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
                         ),
                       ),
                     ),

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/checklist_service.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../utils/checklist_toggle.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
 
@@ -174,25 +175,33 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     );
   }
 
-  Future<void> _handleToggle(
-    List<bool> checklistDone,
-    int index,
-    bool value,
-  ) async {
-    try {
-      final updated = List<bool>.from(checklistDone);
-      updated[index] = value;
+  /// Flips the tapped item inside a transaction: the current list is read
+  /// from Firestore and only that index changes, so two quick taps cannot
+  /// overwrite each other with a stale list.
+  Future<void> _handleToggle(int index) async {
+    final ref = FirebaseFirestore.instance
+        .collection('tickets')
+        .doc(widget.ticketId);
 
-      await FirebaseFirestore.instance
-          .collection('tickets')
-          .doc(widget.ticketId)
-          .update({
-            'checklistDone': updated,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-    } catch (e) {
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        final current = snap.data()?['checklistDone'];
+        tx.update(ref, {
+          'checklistDone': flipChecklistItem(
+            current is List ? current : const [],
+            index,
+          ),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (_) {
       if (mounted) {
-        showAppSnack(context, 'Failed to update: $e', kind: SnackKind.error);
+        showAppSnack(
+          context,
+          'Could not update the checklist. Please try again.',
+          kind: SnackKind.error,
+        );
       }
     }
   }
@@ -251,8 +260,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           items: checklistItems,
           done: checklistDone,
           isGenerating: _isGenerating,
-          onToggle: (index, value) =>
-              _handleToggle(checklistDone, index, value),
+          onToggle: (index, value) => _handleToggle(index),
           onGenerate: () => _handleGenerate(data),
           onReady: () => Navigator.pushNamed(
             context,

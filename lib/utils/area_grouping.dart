@@ -20,7 +20,7 @@ String areaOfTicket({String? area, String? address}) {
 /// tickets already in "Other", are merged into a single "Other" entry.
 List<MapEntry<String, int>> groupByArea(
   Iterable<String> areas, {
-  int maxColumns = 6,
+  int maxColumns = 5,
 }) {
   final counts = <String, int>{};
   for (final a in areas) {

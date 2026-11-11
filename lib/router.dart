@@ -14,6 +14,7 @@ import 'features/technician/report_screen.dart';
 import 'features/customer/customer_main_screen.dart';
 import 'features/customer/my_tickets_screen.dart';
 import 'features/customer/submit_ticket_screen.dart';
+import 'utils/pending_photo.dart';
 import 'features/customer/profile_screen.dart';
 import 'features/customer/ticket_details_screen.dart';
 import 'features/auth/forgot_password_screen.dart';
@@ -67,9 +68,16 @@ class AppRouter {
           builder: (_) => ChecklistScreen(ticketId: ticketId),
         );
       case '/tech/report':
-        final ticketId = settings.arguments as String;
+        // The argument is the ticket id, or a photo recovered after the app
+        // was killed while the camera was open.
+        final args = settings.arguments;
+        final recovered = args is RecoveredPhoto ? args : null;
+        final ticketId = recovered?.ticketId ?? args as String;
         return MaterialPageRoute(
-          builder: (_) => ReportScreen(ticketId: ticketId),
+          builder: (_) => ReportScreen(
+            ticketId: ticketId,
+            recoveredPhotoPath: recovered?.path,
+          ),
         );
 
       // Customer
@@ -78,7 +86,13 @@ class AppRouter {
       case '/customer/tickets':
         return MaterialPageRoute(builder: (_) => const MyTicketsScreen());
       case '/customer/submit':
-        return MaterialPageRoute(builder: (_) => const SubmitTicketScreen());
+        final recovered = settings.arguments is RecoveredPhoto
+            ? settings.arguments as RecoveredPhoto
+            : null;
+        return MaterialPageRoute(
+          builder: (_) =>
+              SubmitTicketScreen(recoveredPhotoPath: recovered?.path),
+        );
       case '/customer/profile':
         return MaterialPageRoute(builder: (_) => const ProfileScreen());
       case '/customer/ticket_details':
