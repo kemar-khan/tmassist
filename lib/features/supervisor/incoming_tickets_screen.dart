@@ -7,6 +7,7 @@ import '../../widgets/app_text_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/ticket_card.dart';
+import '../../widgets/stream_error.dart';
 
 class IncomingTicketsScreen extends StatefulWidget {
   /// When this changes (a different [TicketFilterRequest.id]), the screen
@@ -108,17 +109,10 @@ class _IncomingTicketsScreenState extends State<IncomingTicketsScreen> {
                 }
 
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.s4),
-                      child: Text(
-                        'Error: ${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: AppText.body.copyWith(
-                          color: AppColors.cancelledFg,
-                        ),
-                      ),
-                    ),
+                  // The stream is built inline, so a rebuild subscribes again.
+                  return StreamError(
+                    error: snapshot.error,
+                    onRetry: () => setState(() {}),
                   );
                 }
 

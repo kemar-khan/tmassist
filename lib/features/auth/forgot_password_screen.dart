@@ -6,6 +6,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/section_card.dart';
+import '../../utils/friendly_error.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -48,7 +49,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
 
-      String message = 'Failed to send reset email.';
+      String message = friendlyError(
+        e,
+        fallback: 'Failed to send reset email.',
+      );
 
       if (e.code == 'user-not-found') {
         message = 'No account found with this email.';
@@ -59,12 +63,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       }
 
       showAppSnack(context, message, kind: SnackKind.error);
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
 
       showAppSnack(
         context,
-        'Failed to send reset email: $e',
+        friendlyError(
+          e,
+          fallback: 'Failed to send reset email. Please try again.',
+          stackTrace: st,
+        ),
         kind: SnackKind.error,
       );
     } finally {

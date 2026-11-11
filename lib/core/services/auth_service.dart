@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../utils/friendly_error.dart';
 
 /// Custom exception for authentication errors
 class AuthException implements Exception {
@@ -19,30 +20,6 @@ class AuthService {
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   User? get currentUser => _auth.currentUser;
-
-  /// Convert Firebase auth errors to user-friendly messages
-  String _getErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return 'No account found with this email address.';
-      case 'wrong-password':
-        return 'Incorrect password. Please try again.';
-      case 'invalid-email':
-        return 'Invalid email address.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'too-many-requests':
-        return 'Too many login attempts. Please try again later.';
-      case 'operation-not-allowed':
-        return 'Email/password login is not enabled.';
-      case 'network-request-failed':
-        return 'Network error. Please check your internet connection.';
-      case 'invalid-credential':
-        return 'Invalid email or password.';
-      default:
-        return 'Login failed: ${e.message ?? 'Unknown error'}';
-    }
-  }
 
   Future<UserCredential> registerCustomer({
     required String fullName,
@@ -72,10 +49,23 @@ class AuthService {
       });
 
       return credential;
-    } on FirebaseAuthException catch (e) {
-      throw AuthException(message: _getErrorMessage(e), code: e.code);
-    } catch (e) {
-      throw AuthException(message: 'Registration failed: $e');
+    } on FirebaseAuthException catch (e, st) {
+      throw AuthException(
+        message: friendlyError(
+          e,
+          fallback: 'Registration failed. Please try again.',
+          stackTrace: st,
+        ),
+        code: e.code,
+      );
+    } catch (e, st) {
+      throw AuthException(
+        message: friendlyError(
+          e,
+          fallback: 'Registration failed. Please try again.',
+          stackTrace: st,
+        ),
+      );
     }
   }
 
@@ -89,10 +79,23 @@ class AuthService {
         email: email.trim(),
         password: password.trim(),
       );
-    } on FirebaseAuthException catch (e) {
-      throw AuthException(message: _getErrorMessage(e), code: e.code);
-    } catch (e) {
-      throw AuthException(message: 'Login failed: $e');
+    } on FirebaseAuthException catch (e, st) {
+      throw AuthException(
+        message: friendlyError(
+          e,
+          fallback: 'Login failed. Please try again.',
+          stackTrace: st,
+        ),
+        code: e.code,
+      );
+    } catch (e, st) {
+      throw AuthException(
+        message: friendlyError(
+          e,
+          fallback: 'Login failed. Please try again.',
+          stackTrace: st,
+        ),
+      );
     }
   }
 

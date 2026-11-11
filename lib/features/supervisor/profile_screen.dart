@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../widgets/app_buttons.dart';
-import '../../widgets/empty_state.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/stream_error.dart';
 
 class SupervisorProfileScreen extends StatelessWidget {
   const SupervisorProfileScreen({super.key});
@@ -37,10 +37,7 @@ class SupervisorProfileScreen extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            return EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: 'Error: ${snapshot.error}',
-            );
+            return StreamError(error: snapshot.error);
           }
 
           final data = snapshot.data?.data() as Map<String, dynamic>?;

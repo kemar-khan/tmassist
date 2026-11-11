@@ -8,6 +8,7 @@ import '../../widgets/app_buttons.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/section_card.dart';
 import 'speed_test_screen.dart';
+import '../../widgets/stream_error.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -33,16 +34,7 @@ class ProfileScreen extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.s4),
-                child: Text(
-                  'Error: ${snapshot.error}',
-                  textAlign: TextAlign.center,
-                  style: AppText.body.copyWith(color: AppColors.cancelledFg),
-                ),
-              ),
-            );
+            return StreamError(error: snapshot.error);
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {

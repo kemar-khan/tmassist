@@ -6,6 +6,7 @@ import '../../core/theme/app_tokens.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/section_card.dart';
+import '../../utils/friendly_error.dart';
 
 class RegisterCustomerScreen extends StatefulWidget {
   const RegisterCustomerScreen({super.key});
@@ -62,10 +63,18 @@ class _RegisterCustomerScreenState extends State<RegisterCustomerScreen> {
       );
 
       Navigator.pushNamedAndRemoveUntil(context, '/customer', (route) => false);
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
 
-      showAppSnack(context, "Registration failed: $e", kind: SnackKind.error);
+      showAppSnack(
+        context,
+        friendlyError(
+          e,
+          fallback: 'Registration failed. Please try again.',
+          stackTrace: st,
+        ),
+        kind: SnackKind.error,
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

@@ -10,6 +10,8 @@ import '../../widgets/info_row.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/status_badge.dart';
+import '../../utils/friendly_error.dart';
+import '../../widgets/stream_error.dart';
 
 class TicketDetailsScreen extends StatelessWidget {
   final String ticketId;
@@ -43,11 +45,15 @@ class TicketDetailsScreen extends StatelessWidget {
       if (!context.mounted) return;
       showAppSnack(context, 'Ticket cancelled', kind: SnackKind.success);
       Navigator.pop(context);
-    } catch (e) {
+    } catch (e, st) {
       if (!context.mounted) return;
       showAppSnack(
         context,
-        e.toString().replaceFirst('Exception: ', ''),
+        friendlyError(
+          e,
+          fallback: 'Could not cancel the ticket. Please try again.',
+          stackTrace: st,
+        ),
         kind: SnackKind.error,
       );
     }
@@ -68,16 +74,8 @@ class TicketDetailsScreen extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.s4),
-                child: Text(
-                  'Something went wrong:\n${snapshot.error}',
-                  textAlign: TextAlign.center,
-                  style: AppText.body.copyWith(color: AppColors.cancelledFg),
-                ),
-              ),
-            );
+            // Stateless screen: no retry; going back and in loads it again.
+            return StreamError(error: snapshot.error);
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {

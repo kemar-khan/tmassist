@@ -6,6 +6,7 @@ import '../../utils/checklist_toggle.dart';
 import '../../utils/report_draft.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/stream_error.dart';
 
 class ChecklistScreen extends StatefulWidget {
   final String ticketId;
@@ -22,11 +23,16 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
 
   // Created once: a stream made inside build() would re-subscribe (and flash
   // a loading screen) on every setState, such as when generation starts.
-  late final Stream<DocumentSnapshot> _ticketStream;
+  late Stream<DocumentSnapshot> _ticketStream;
 
   @override
   void initState() {
     super.initState();
+    _createStream();
+  }
+
+  // Also used by "Try Again", which needs a fresh subscription.
+  void _createStream() {
     _ticketStream = FirebaseFirestore.instance
         .collection('tickets')
         .doc(widget.ticketId)
@@ -298,9 +304,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         if (snapshot.hasError) {
           return _messageScaffold(
             'Error',
-            EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: 'Error: ${snapshot.error}',
+            StreamError(
+              error: snapshot.error,
+              onRetry: () => setState(_createStream),
             ),
           );
         }

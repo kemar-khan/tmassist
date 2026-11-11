@@ -8,11 +8,15 @@ class EmptyState extends StatelessWidget {
   final String title;
   final String? subtitle;
 
+  /// Optional widget under the text, such as a "Try Again" button.
+  final Widget? action;
+
   const EmptyState({
     super.key,
     required this.icon,
     required this.title,
     this.subtitle,
+    this.action,
   });
 
   @override
@@ -45,6 +49,10 @@ class EmptyState extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AppText.body.copyWith(color: AppColors.inkMuted),
               ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: AppSpacing.s4),
+              action!,
             ],
           ],
         ),

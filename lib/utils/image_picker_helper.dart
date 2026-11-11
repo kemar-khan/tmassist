@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'pending_photo.dart';
+import 'friendly_error.dart';
 
 const _pendingKey = 'pending_photo';
 
@@ -83,10 +84,10 @@ Future<XFile?> pickImageWithChoice(
       // Reached only when the app was NOT killed: a file or a cancel.
       await _clearPending();
     }
-  } catch (e) {
+  } catch (e, st) {
     if (context.mounted) {
-      // Only blame the permission when the plugin says so; otherwise show the
-      // real error (a generic message hid a missing-plugin error before).
+      // Only blame the permission when the plugin says so; otherwise a
+      // friendly message (the raw error is printed in debug builds only).
       final deniedCamera =
           e is PlatformException && e.code == 'camera_access_denied';
       ScaffoldMessenger.of(context).showSnackBar(
@@ -94,7 +95,11 @@ Future<XFile?> pickImageWithChoice(
           content: Text(
             deniedCamera
                 ? 'Camera permission is denied. Allow it in the app settings and try again.'
-                : 'Could not pick the file: $e',
+                : friendlyError(
+                    e,
+                    fallback: 'Could not pick the file. Please try again.',
+                    stackTrace: st,
+                  ),
           ),
           backgroundColor: Colors.red,
         ),

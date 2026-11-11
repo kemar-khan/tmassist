@@ -8,6 +8,7 @@ import '../../widgets/app_text_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/ticket_card.dart';
+import '../../widgets/stream_error.dart';
 
 class AssignedTicketsScreen extends StatefulWidget {
   /// A request from another tab to select a status filter. When its id
@@ -61,6 +62,11 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
   void initState() {
     super.initState();
     _uid = widget.technicianId ?? FirebaseAuth.instance.currentUser?.uid;
+    _createStream();
+  }
+
+  // Also used by "Try Again", which needs a fresh subscription.
+  void _createStream() {
     final uid = _uid;
     if (uid == null) return;
     _ticketStream =
@@ -151,9 +157,9 @@ class _AssignedTicketsScreenState extends State<AssignedTicketsScreen> {
                 }
 
                 if (snapshot.hasError) {
-                  return EmptyState(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Error: ${snapshot.error}',
+                  return StreamError(
+                    error: snapshot.error,
+                    onRetry: () => setState(_createStream),
                   );
                 }
 

@@ -14,6 +14,8 @@ import '../../widgets/info_row.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/status_style.dart';
+import '../../utils/friendly_error.dart';
+import '../../widgets/stream_error.dart';
 
 class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -39,7 +41,7 @@ class _SupervisorTicketDetailScreenState
 
   // Created once: a stream made inside build() would re-subscribe (and flash
   // the spinner) on every setState.
-  late final Stream<DocumentSnapshot> _ticketStream;
+  late Stream<DocumentSnapshot> _ticketStream;
 
   // The last report that loaded, shown while a refresh is in flight.
   Map<String, dynamic>? _lastReport;
@@ -47,6 +49,11 @@ class _SupervisorTicketDetailScreenState
   @override
   void initState() {
     super.initState();
+    _createStream();
+  }
+
+  // Also used by "Try Again", which needs a fresh subscription.
+  void _createStream() {
     _ticketStream = FirebaseFirestore.instance
         .collection('tickets')
         .doc(widget.ticketId)
@@ -104,9 +111,17 @@ class _SupervisorTicketDetailScreenState
         'Report signed and ticket closed',
         kind: SnackKind.success,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
-      showAppSnack(context, 'Sign-off failed: $e', kind: SnackKind.error);
+      showAppSnack(
+        context,
+        friendlyError(
+          e,
+          fallback: 'Could not sign off the report. Please try again.',
+          stackTrace: st,
+        ),
+        kind: SnackKind.error,
+      );
     } finally {
       if (mounted) setState(() => _isSigning = false);
     }
@@ -130,11 +145,15 @@ class _SupervisorTicketDetailScreenState
         'Comment saved successfully',
         kind: SnackKind.success,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
       showAppSnack(
         context,
-        'Failed to save comment: $e',
+        friendlyError(
+          e,
+          fallback: 'Could not save the comment. Please try again.',
+          stackTrace: st,
+        ),
         kind: SnackKind.error,
       );
     } finally {
@@ -146,9 +165,16 @@ class _SupervisorTicketDetailScreenState
     try {
       await ReportPdfService.export(ticketId: widget.ticketId, report: report);
     } catch (e, st) {
-      debugPrint('PDF export error: $e\n$st');
       if (!mounted) return;
-      showAppSnack(context, 'PDF export failed: $e', kind: SnackKind.error);
+      showAppSnack(
+        context,
+        friendlyError(
+          e,
+          fallback: 'Could not export the PDF. Please try again.',
+          stackTrace: st,
+        ),
+        kind: SnackKind.error,
+      );
     }
   }
 
@@ -175,9 +201,9 @@ class _SupervisorTicketDetailScreenState
         if (snapshot.hasError) {
           return _messageScaffold(
             "Error",
-            EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: "Error: ${snapshot.error}",
+            StreamError(
+              error: snapshot.error,
+              onRetry: () => setState(_createStream),
             ),
           );
         }

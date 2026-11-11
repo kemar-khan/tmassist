@@ -7,6 +7,8 @@ import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/picker_sheet.dart';
 import '../../widgets/status_badge.dart';
+import '../../utils/friendly_error.dart';
+import '../../widgets/stream_error.dart';
 
 class AssignTicketScreen extends StatefulWidget {
   final String ticketId;
@@ -24,12 +26,17 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
 
   // The streams are created once: creating them inside build() would
   // re-subscribe (and flash the spinner) every time a technician is picked.
-  late final Stream<DocumentSnapshot> _ticketStream;
-  late final Stream<QuerySnapshot> _techStream;
+  late Stream<DocumentSnapshot> _ticketStream;
+  late Stream<QuerySnapshot> _techStream;
 
   @override
   void initState() {
     super.initState();
+    _createStreams();
+  }
+
+  // Also used by "Try Again", which needs fresh subscriptions.
+  void _createStreams() {
     _ticketStream = FirebaseFirestore.instance
         .collection('tickets')
         .doc(widget.ticketId)
@@ -95,12 +102,20 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
         "Ticket assigned to $_selectedTechnicianName",
         kind: SnackKind.success,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
 
       setState(() => _isLoading = false);
 
-      showAppSnack(context, "Error: $e", kind: SnackKind.error);
+      showAppSnack(
+        context,
+        friendlyError(
+          e,
+          fallback: 'Could not assign the ticket. Please try again.',
+          stackTrace: st,
+        ),
+        kind: SnackKind.error,
+      );
     }
   }
 
@@ -127,9 +142,9 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
         if (ticketSnapshot.hasError) {
           return _messageScaffold(
             "Error",
-            EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: "Error: ${ticketSnapshot.error}",
+            StreamError(
+              error: ticketSnapshot.error,
+              onRetry: () => setState(_createStreams),
             ),
           );
         }
@@ -167,9 +182,9 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
             if (techSnapshot.hasError) {
               return _messageScaffold(
                 "Error",
-                EmptyState(
-                  icon: Icons.error_outline_rounded,
-                  title: "Error: ${techSnapshot.error}",
+                StreamError(
+                  error: techSnapshot.error,
+                  onRetry: () => setState(_createStreams),
                 ),
               );
             }

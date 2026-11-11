@@ -11,6 +11,7 @@ import '../../widgets/home_header.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/ticket_stub_pattern.dart';
 import 'incoming_tickets_screen.dart';
+import '../../widgets/stream_error.dart';
 
 class SupervisorHomeScreen extends StatefulWidget {
   /// Called by "View All" to switch to the Tickets tab. When null (the screen
@@ -92,18 +93,11 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
               }
 
               if (ticketSnapshot.hasError) {
+                // The streams are built inline, so a rebuild subscribes again.
                 return Scaffold(
-                  body: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.s4),
-                      child: Text(
-                        'Error: ${ticketSnapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: AppText.body.copyWith(
-                          color: AppColors.cancelledFg,
-                        ),
-                      ),
-                    ),
+                  body: StreamError(
+                    error: ticketSnapshot.error,
+                    onRetry: () => setState(() {}),
                   ),
                 );
               }

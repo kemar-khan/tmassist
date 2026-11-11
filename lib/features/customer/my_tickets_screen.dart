@@ -6,6 +6,7 @@ import '../../utils/cancelled_status.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_chip_row.dart';
 import '../../widgets/ticket_card.dart';
+import '../../widgets/stream_error.dart';
 
 class MyTicketsScreen extends StatefulWidget {
   const MyTicketsScreen({super.key});
@@ -108,17 +109,10 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                 }
 
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.s4),
-                      child: Text(
-                        'Something went wrong:\n${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: AppText.body.copyWith(
-                          color: AppColors.cancelledFg,
-                        ),
-                      ),
-                    ),
+                  // The stream is built inline, so a rebuild subscribes again.
+                  return StreamError(
+                    error: snapshot.error,
+                    onRetry: () => setState(() {}),
                   );
                 }
 

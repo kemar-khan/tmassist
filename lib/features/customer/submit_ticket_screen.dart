@@ -12,6 +12,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../core/services/ai_extraction_service.dart';
 import '../../core/constants/service_areas.dart';
+import '../../utils/friendly_error.dart';
 
 class SubmitTicketScreen extends StatefulWidget {
   /// A photo that Android kept after killing the app (see recoverLostPhoto);
@@ -82,12 +83,16 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
       );
 
       Navigator.pop(context);
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
 
       showAppSnack(
         context,
-        'Failed to submit ticket: $e',
+        friendlyError(
+          e,
+          fallback: 'Could not submit your ticket. Please try again.',
+          stackTrace: st,
+        ),
         kind: SnackKind.error,
       );
     } finally {
@@ -109,12 +114,16 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         permission = await Geolocator.requestPermission();
 
         if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
+          throw const FriendlyException(
+            'Location permission is denied. Allow it in the app settings.',
+          );
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied');
+        throw const FriendlyException(
+          'Location permission is permanently denied. Allow it in the app settings.',
+        );
       }
 
       Position position = await Geolocator.getCurrentPosition(
@@ -140,10 +149,15 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         'Location added successfully',
         kind: SnackKind.success,
       );
-    } catch (e) {
+    } catch (e, st) {
+      if (!mounted) return;
       showAppSnack(
         context,
-        'Failed to get location: $e',
+        friendlyError(
+          e,
+          fallback: 'Could not get your location. Please try again.',
+          stackTrace: st,
+        ),
         kind: SnackKind.error,
       );
     } finally {
@@ -181,6 +195,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
 
     try {
       final url = await CloudinaryService().uploadFromPath(picked.path);
+      if (!mounted) return;
 
       setState(() {
         _attachmentUrl = url;
@@ -192,8 +207,17 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         'Attachment uploaded successfully',
         kind: SnackKind.success,
       );
-    } catch (e) {
-      showAppSnack(context, 'Upload failed: $e', kind: SnackKind.error);
+    } catch (e, st) {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        friendlyError(
+          e,
+          fallback: 'Could not upload the file. Please try again.',
+          stackTrace: st,
+        ),
+        kind: SnackKind.error,
+      );
     } finally {
       if (mounted) {
         setState(() => _isUploadingAttachment = false);
@@ -252,8 +276,17 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         'Details extracted! Please review and complete the form.',
         kind: SnackKind.success,
       );
-    } catch (e) {
-      showAppSnack(context, 'Extraction failed: $e', kind: SnackKind.error);
+    } catch (e, st) {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        friendlyError(
+          e,
+          fallback: 'Could not read your description. Please try again.',
+          stackTrace: st,
+        ),
+        kind: SnackKind.error,
+      );
     } finally {
       if (mounted) setState(() => _isExtracting = false);
     }

@@ -10,6 +10,7 @@ import '../../widgets/app_text_field.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/status_style.dart';
+import '../../widgets/stream_error.dart';
 
 /// The technician with the most tickets resolved this week (key
 /// `resolvedThisWeek`), or null when nobody resolved one. Ties go to the
@@ -113,9 +114,7 @@ class _TechnicianPerformanceScreenState
         stream: _usersStream,
         builder: (context, userSnapshot) {
           if (userSnapshot.hasError) {
-            return _buildErrorState(
-              "Error loading technicians: ${userSnapshot.error}",
-            );
+            return _buildErrorState(userSnapshot.error);
           }
           // Only the first load shows the spinner; once data has arrived, a
           // rebuild keeps showing it.
@@ -134,9 +133,7 @@ class _TechnicianPerformanceScreenState
             stream: _ticketsStream,
             builder: (context, ticketSnapshot) {
               if (ticketSnapshot.hasError) {
-                return _buildErrorState(
-                  "Error loading tickets: ${ticketSnapshot.error}",
-                );
+                return _buildErrorState(ticketSnapshot.error);
               }
               if (!ticketSnapshot.hasData &&
                   ticketSnapshot.connectionState == ConnectionState.waiting) {
@@ -266,38 +263,8 @@ class _TechnicianPerformanceScreenState
     );
   }
 
-  Widget _buildErrorState(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.s6),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 60,
-              color: AppColors.cancelledFg,
-            ),
-            const SizedBox(height: AppSpacing.s4),
-            Text(
-              "Something went wrong",
-              style: AppText.heading.copyWith(color: AppColors.ink),
-            ),
-            const SizedBox(height: AppSpacing.s2),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppText.body.copyWith(color: AppColors.inkMuted),
-            ),
-            const SizedBox(height: AppSpacing.s4),
-            ElevatedButton(
-              onPressed: () => setState(_createStreams),
-              child: const Text("Retry"),
-            ),
-          ],
-        ),
-      ),
-    );
+  Widget _buildErrorState(Object? error) {
+    return StreamError(error: error, onRetry: () => setState(_createStreams));
   }
 }
 

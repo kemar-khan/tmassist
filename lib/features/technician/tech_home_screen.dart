@@ -10,12 +10,12 @@ import '../../utils/cancelled_status.dart';
 import '../../utils/category_icons.dart';
 import '../../utils/report_dates.dart';
 import '../../utils/week_utils.dart';
-import '../../widgets/empty_state.dart';
 import '../../widgets/header_icon_badge.dart';
 import '../../widgets/home_header.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/ticket_stub_pattern.dart';
+import '../../widgets/stream_error.dart';
 
 /// A ticket as the technician Home shows it.
 class TechTicketItem {
@@ -120,6 +120,13 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
   void initState() {
     super.initState();
     _reports.addListener(_onReportDates);
+    _listen();
+  }
+
+  // Also used by "Try Again", which needs fresh subscriptions.
+  void _listen() {
+    _userSub?.cancel();
+    _ticketSub?.cancel();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -127,14 +134,20 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
         .collection('users')
         .doc(user.uid)
         .snapshots()
-        .listen((snap) {
-          final data = snap.data();
-          if (!mounted) return;
-          setState(() {
-            _fullName = data?['fullName']?.toString();
-            _coverageAreas = List<String>.from(data?['coverageAreas'] ?? []);
-          });
-        }, onError: (_) {});
+        .listen(
+          (snap) {
+            final data = snap.data();
+            if (!mounted) return;
+            setState(() {
+              _fullName = data?['fullName']?.toString();
+              _coverageAreas = List<String>.from(data?['coverageAreas'] ?? []);
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _error = e);
+          },
+        );
 
     _ticketSub = FirebaseFirestore.instance
         .collection('tickets')
@@ -222,9 +235,15 @@ class _TechHomeScreenState extends State<TechHomeScreen> {
     // header. Only this tab changes the style; the others keep the theme's.
     Widget child;
     if (_error != null) {
-      child = EmptyState(
-        icon: Icons.error_outline_rounded,
-        title: 'Error: $_error',
+      child = StreamError(
+        error: _error,
+        onRetry: () {
+          setState(() {
+            _error = null;
+            _ticketsLoaded = false;
+          });
+          _listen();
+        },
       );
     } else if (!_ticketsLoaded) {
       child = const Center(child: CircularProgressIndicator());

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auto_assignment_service.dart';
+import '../../utils/friendly_error.dart';
 
 class TicketService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -72,18 +73,18 @@ class TicketService {
     final snap = await ref.get();
     final data = snap.data();
     if (!snap.exists || data == null) {
-      throw Exception('Ticket not found.');
+      throw const FriendlyException('Ticket not found.');
     }
 
     if (data['customerId'] != user.uid) {
-      throw Exception('You can only cancel your own tickets.');
+      throw const FriendlyException('You can only cancel your own tickets.');
     }
 
     final status = (data['status'] ?? '').toString().toUpperCase();
     final canCancel =
         status == 'NEW' || (status == 'ASSIGNED' && data['startedAt'] == null);
     if (!canCancel) {
-      throw Exception('Ticket can no longer be cancelled');
+      throw const FriendlyException('Ticket can no longer be cancelled');
     }
 
     final trimmedReason = reason?.trim() ?? '';

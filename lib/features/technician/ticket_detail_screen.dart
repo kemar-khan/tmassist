@@ -9,6 +9,8 @@ import '../../widgets/progress_stepper.dart';
 import '../../widgets/section_card.dart';
 import '../../widgets/status_badge.dart';
 import '../../widgets/status_style.dart';
+import '../../utils/friendly_error.dart';
+import '../../widgets/stream_error.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -24,11 +26,16 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
   // Created once: a stream made inside build() would re-subscribe (and flash
   // the loading screen) every time START JOB calls setState.
-  late final Stream<DocumentSnapshot> _ticketStream;
+  late Stream<DocumentSnapshot> _ticketStream;
 
   @override
   void initState() {
     super.initState();
+    _createStream();
+  }
+
+  // Also used by "Try Again", which needs a fresh subscription.
+  void _createStream() {
     _ticketStream = FirebaseFirestore.instance
         .collection('tickets')
         .doc(widget.ticketId)
@@ -81,12 +88,16 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           kind: SnackKind.success,
         );
       }
-    } catch (e) {
+    } catch (e, st) {
       if (mounted) {
         setState(() => _isUpdating = false);
         showAppSnack(
           context,
-          'Failed to update status: $e',
+          friendlyError(
+            e,
+            fallback: 'Could not start the job. Please try again.',
+            stackTrace: st,
+          ),
           kind: SnackKind.error,
         );
       }
@@ -109,9 +120,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         if (snapshot.hasError) {
           return Scaffold(
             appBar: AppBar(title: const Text("Error")),
-            body: EmptyState(
-              icon: Icons.error_outline_rounded,
-              title: "Error: ${snapshot.error}",
+            body: StreamError(
+              error: snapshot.error,
+              onRetry: () => setState(_createStream),
             ),
           );
         }
