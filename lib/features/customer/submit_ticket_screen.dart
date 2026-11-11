@@ -13,6 +13,11 @@ import 'package:geocoding/geocoding.dart';
 import '../../core/services/ai_extraction_service.dart';
 import '../../core/constants/service_areas.dart';
 import '../../utils/friendly_error.dart';
+import 'dart:async';
+import '../../core/config/timeouts.dart';
+import '../../utils/photo_check.dart';
+import '../../utils/slow_hint.dart';
+import '../../widgets/slow_hint_text.dart';
 
 class SubmitTicketScreen extends StatefulWidget {
   /// A photo that Android kept after killing the app (see recoverLostPhoto);
@@ -45,6 +50,10 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   // AI Mode variables
   bool _isAiMode = false;
   bool _isExtracting = false;
+
+  // "Still working…" shows when the AI suggestion takes longer than 10 s.
+  final SlowHint _slowHint = SlowHint(after: Timeouts.slowHint);
+  bool _showSlowHint = false;
   final TextEditingController _aiInputController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -55,6 +64,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   String? _area;
 
   Future<void> _submitForm() async {
+    if (_isSubmitting) return;
     if (!_formKey.currentState!.validate()) return;
 
     _formKey.currentState!.save();
@@ -64,15 +74,20 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     });
 
     try {
-      await _ticketService.createTicket(
-        category: _category!,
-        title: _title!,
-        description: _description!,
-        address: _address!,
-        area: _area!,
-        contactNumber: _contactNumber!,
-        attachmentUrl: _attachmentUrl, // add file upload later
-      );
+      // The timeout only stops WAITING. Firestore keeps the write queued while
+      // the phone is offline, so the ticket may still be created: the call is
+      // never repeated from here.
+      await _ticketService
+          .createTicket(
+            category: _category!,
+            title: _title!,
+            description: _description!,
+            address: _address!,
+            area: _area!,
+            contactNumber: _contactNumber!,
+            attachmentUrl: _attachmentUrl, // add file upload later
+          )
+          .timeout(Timeouts.ticketCreate);
 
       if (!mounted) return;
 
@@ -83,6 +98,16 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
       );
 
       Navigator.pop(context);
+    } on TimeoutException {
+      // Not a failure: the form stays as it is, and the user is told to check
+      // My Tickets before submitting again.
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        'Your network is slow. Your ticket may still be submitted once you '
+        'are back online. Please check My Tickets before submitting again.',
+        kind: SnackKind.info,
+      );
     } catch (e, st) {
       if (!mounted) return;
 
@@ -126,18 +151,28 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         );
       }
 
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      // Position and address lookup share one 15 second limit.
+      final address = await () async {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
 
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+        final placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isEmpty) {
+          throw const FriendlyException(
+            'We could not find an address for your location. '
+            'Please type the address yourself.',
+          );
+        }
 
-      Placemark place = placemarks[0];
+        final place = placemarks.first;
+        return '${place.street}, ${place.locality}, ${place.country}';
+      }().timeout(Timeouts.location);
 
-      final address = '${place.street}, ${place.locality}, ${place.country}';
+      if (!mounted) return;
 
       setState(() {
         _address = address;
@@ -148,6 +183,13 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         context,
         'Location added successfully',
         kind: SnackKind.success,
+      );
+    } on TimeoutException {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        'Could not get your location in time. Please type the address yourself.',
+        kind: SnackKind.error,
       );
     } catch (e, st) {
       if (!mounted) return;
@@ -191,6 +233,30 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   }
 
   Future<void> _uploadAttachmentFile(XFile picked) async {
+    // Only images and PDF up to 5 MB are uploaded.
+    try {
+      final bytes = await picked.length();
+      final name = picked.name.isNotEmpty ? picked.name : picked.path;
+      if (!isAcceptableAttachment(fileName: name, bytes: bytes)) {
+        if (!mounted) return;
+        showAppSnack(
+          context,
+          'Please choose an image or PDF under 5 MB.',
+          kind: SnackKind.error,
+        );
+        return;
+      }
+    } catch (_) {
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        'Please choose an image or PDF under 5 MB.',
+        kind: SnackKind.error,
+      );
+      return;
+    }
+    if (!mounted) return;
+
     setState(() => _isUploadingAttachment = true);
 
     try {
@@ -239,6 +305,9 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     }
 
     setState(() => _isExtracting = true);
+    _slowHint.start(() {
+      if (mounted) setState(() => _showSlowHint = true);
+    });
 
     try {
       final result = await _aiExtractionService.extractTicketDetails(
@@ -277,18 +346,23 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         kind: SnackKind.success,
       );
     } catch (e, st) {
+      // Timeout or any failure: the form stays usable, so the customer can
+      // choose the category themselves. The raw error is only logged.
+      friendlyError(e, stackTrace: st);
       if (!mounted) return;
       showAppSnack(
         context,
-        friendlyError(
-          e,
-          fallback: 'Could not read your description. Please try again.',
-          stackTrace: st,
-        ),
+        'Could not get an AI suggestion. You can choose the category yourself.',
         kind: SnackKind.error,
       );
     } finally {
-      if (mounted) setState(() => _isExtracting = false);
+      _slowHint.stop();
+      if (mounted) {
+        setState(() {
+          _isExtracting = false;
+          _showSlowHint = false;
+        });
+      }
     }
   }
 
@@ -298,6 +372,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     _aiInputController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
+    _slowHint.stop();
     super.dispose();
   }
 
@@ -757,6 +832,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                 : const Icon(Icons.fact_check_outlined),
             label: Text(_isExtracting ? 'Extracting...' : 'Extract Details'),
           ),
+          if (_isExtracting && _showSlowHint) const SlowHintText(),
         ],
       ),
     );

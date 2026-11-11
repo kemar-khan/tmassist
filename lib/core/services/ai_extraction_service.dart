@@ -1,6 +1,8 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../../config/app_constants.dart';
 import '../constants/service_areas.dart';
+import '../../utils/gemini_retry.dart';
+import '../config/timeouts.dart';
 
 class AiExtractionService {
   late final GenerativeModel _model;
@@ -61,7 +63,11 @@ Example format:
 
     try {
       final content = [Content.text(prompt)];
-      final response = await _model.generateContent(content);
+      // One retry after 2 s on 503 / 429 / network errors; never on a timeout.
+      final response = await withGeminiRetry(
+        () => _model.generateContent(content).timeout(Timeouts.aiSuggestion),
+        label: 'suggestion',
+      );
       final responseText = response.text ?? '';
 
       final cleaned = responseText

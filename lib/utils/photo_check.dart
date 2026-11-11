@@ -13,3 +13,16 @@ bool isAcceptableProofPhoto({required String fileName, required int bytes}) {
       bytes > 0 &&
       bytes <= maxProofPhotoBytes;
 }
+
+const _allowedAttachmentTypes = {..._allowedPhotoTypes, 'pdf'};
+
+/// Whether a picked file can be attached to a ticket: an image type we accept
+/// or a PDF, and no larger than [maxProofPhotoBytes] (5 MB).
+bool isAcceptableAttachment({required String fileName, required int bytes}) {
+  final dot = fileName.lastIndexOf('.');
+  if (dot < 0 || dot == fileName.length - 1) return false;
+  final ext = fileName.substring(dot + 1).toLowerCase();
+  return _allowedAttachmentTypes.contains(ext) &&
+      bytes > 0 &&
+      bytes <= maxProofPhotoBytes;
+}

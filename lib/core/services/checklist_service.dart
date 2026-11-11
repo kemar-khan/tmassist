@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart'; // kDebugMode, debugPrint
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '/config/app_constants.dart';
+import '../../utils/gemini_retry.dart';
 
 /// TEMP-DEBUG [CHECKLIST] output: the text sent to Gemini and what comes back.
 /// Printed only in debug builds, in pieces so long responses are not cut off.
@@ -864,7 +865,11 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
       // TEMP-DEBUG [CHECKLIST] end
       final content = [Content.text(prompt)];
       final stopwatch = Stopwatch()..start();
-      final response = await _model.generateContent(content);
+      // One retry after 2 s on 503 / 429 / network errors; never on a timeout.
+      final response = await withGeminiRetry(
+        () => _model.generateContent(content),
+        label: 'checklist',
+      );
       stopwatch.stop();
       _dbg(
         'DEBUG [Checklist] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',

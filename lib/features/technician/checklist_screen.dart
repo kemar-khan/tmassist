@@ -7,6 +7,9 @@ import '../../utils/report_draft.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/stream_error.dart';
+import '../../core/config/timeouts.dart';
+import '../../utils/slow_hint.dart';
+import '../../widgets/slow_hint_text.dart';
 
 class ChecklistScreen extends StatefulWidget {
   final String ticketId;
@@ -110,6 +113,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     required bool addToExisting,
   }) async {
     setState(() => _isGenerating = true);
+    _slowHint.start(() {
+      if (mounted) setState(() => _showSlowHint = true);
+    });
 
     try {
       final category = ticketData['category']?.toString() ?? 'Other';
@@ -143,7 +149,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
             existingItems: existingItems,
             addToExisting: addToExisting,
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(Timeouts.checklistGeneration);
 
       // Nothing usable came back: keep the current checklist as it is.
       if (newItems.isEmpty) {
@@ -199,7 +205,13 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       // Timeout, network or AI errors: the checklist is left untouched.
       if (mounted) _showGenerateError();
     } finally {
-      if (mounted) setState(() => _isGenerating = false);
+      _slowHint.stop();
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+          _showSlowHint = false;
+        });
+      }
     }
   }
 
@@ -218,6 +230,16 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final value = _overlay.toggle(_serverDone, index);
     setState(() {});
     _writes = _writes.then((_) => _write(index, value));
+  }
+
+  // "Still working…" shows when generation takes longer than 10 seconds.
+  final SlowHint _slowHint = SlowHint(after: Timeouts.slowHint);
+  bool _showSlowHint = false;
+
+  @override
+  void dispose() {
+    _slowHint.stop();
+    super.dispose();
   }
 
   bool _isOpeningReport = false;
@@ -335,6 +357,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           items: checklistItems,
           done: _overlay.apply(checklistDone),
           isGenerating: _isGenerating,
+          showSlowHint: _showSlowHint,
           onToggle: (index, value) => _handleToggle(index),
           onGenerate: () => _handleGenerate(data),
           onReady: _openReport,
@@ -357,6 +380,10 @@ class ChecklistView extends StatelessWidget {
   final List<Map<String, dynamic>> items;
   final List<bool> done;
   final bool isGenerating;
+
+  /// True when generation has been running for a while: a small "Still
+  /// working…" line shows under the generate button.
+  final bool showSlowHint;
   final void Function(int index, bool value) onToggle;
   final VoidCallback onGenerate;
 
@@ -374,6 +401,7 @@ class ChecklistView extends StatelessWidget {
     required this.items,
     required this.done,
     required this.isGenerating,
+    this.showSlowHint = false,
     required this.onToggle,
     required this.onGenerate,
     required this.onReady,
@@ -408,6 +436,7 @@ class ChecklistView extends StatelessWidget {
             if (total == 0)
               _EmptyChecklistCard(
                 isGenerating: isGenerating,
+                showSlowHint: showSlowHint,
                 onGenerate: onGenerate,
               )
             else ...[
@@ -443,6 +472,7 @@ class ChecklistView extends StatelessWidget {
                   isGenerating ? 'Generating...' : 'Regenerate Checklist',
                 ),
               ),
+              if (isGenerating && showSlowHint) const SlowHintText(),
             ],
           ],
         ),
@@ -774,10 +804,12 @@ class _ChecklistItemCard extends StatelessWidget {
 
 class _EmptyChecklistCard extends StatelessWidget {
   final bool isGenerating;
+  final bool showSlowHint;
   final VoidCallback onGenerate;
 
   const _EmptyChecklistCard({
     required this.isGenerating,
+    required this.showSlowHint,
     required this.onGenerate,
   });
 
@@ -847,6 +879,7 @@ class _EmptyChecklistCard extends StatelessWidget {
               isGenerating ? 'Generating...' : 'Generate AI Checklist',
             ),
           ),
+          if (isGenerating && showSlowHint) const SlowHintText(),
         ],
       ),
     );
