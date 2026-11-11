@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/checklist_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/checklist_toggle.dart';
+import '../../utils/report_draft.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/empty_state.dart';
 
@@ -29,8 +30,23 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     _ticketStream = FirebaseFirestore.instance
         .collection('tickets')
         .doc(widget.ticketId)
-        .snapshots();
+        .snapshots()
+        .map((snap) {
+          final Object? data = snap.data();
+          _serverDone = _flags(data is Map ? data['checklistDone'] : null);
+          _overlay.observe(_serverDone);
+          return snap;
+        });
   }
+
+  // Taps not yet confirmed by the server, shown at once (see ChecklistOverlay).
+  final ChecklistOverlay _overlay = ChecklistOverlay();
+  List<bool> _serverDone = const [];
+  // Writes run one after another so taps reach the server in order.
+  Future<void> _writes = Future.value();
+
+  List<bool> _flags(Object? raw) =>
+      raw is List ? [for (final e in raw) e == true] : <bool>[];
 
   Map<String, dynamic> _asMap(Object? e) {
     if (e is Map<String, dynamic>) return e;
@@ -143,14 +159,28 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         donelist = List.filled(finalItems.length, false);
       }
 
-      await FirebaseFirestore.instance
-          .collection('tickets')
-          .doc(widget.ticketId)
-          .update({
-            'checklistItems': finalItems,
-            'checklistDone': donelist,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+      // The ticket and the report draft change in ONE batch: the draft's
+      // generated part (built from the old checklist) is cleared in the same
+      // write, while the technician's notes and photo stay. The draft is read
+      // first, so a failure leaves everything as it was. A submitted report
+      // (reports/{id}) is final and is never touched.
+      final db = FirebaseFirestore.instance;
+      final draftRef = db.collection('drafts').doc(widget.ticketId);
+      final draftSnap = await draftRef.get();
+      final batch = db.batch();
+      batch.update(db.collection('tickets').doc(widget.ticketId), {
+        'checklistItems': finalItems,
+        'checklistDone': donelist,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (draftSnap.exists) {
+        batch.update(draftRef, {
+          ...staleDraftFields,
+          'checklistSignature': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
 
       if (mounted) {
         showAppSnack(
@@ -175,10 +205,43 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     );
   }
 
-  /// Flips the tapped item inside a transaction: the current list is read
-  /// from Firestore and only that index changes, so two quick taps cannot
-  /// overwrite each other with a stale list.
-  Future<void> _handleToggle(int index) async {
+  /// The screen updates at once from the overlay; the write then runs in a
+  /// queue. Inside the transaction the list is read from Firestore and only
+  /// the tapped index is set, so quick taps cannot overwrite each other.
+  void _handleToggle(int index) {
+    final value = _overlay.toggle(_serverDone, index);
+    setState(() {});
+    _writes = _writes.then((_) => _write(index, value));
+  }
+
+  bool _isOpeningReport = false;
+  int _failedWrites = 0;
+
+  /// "Ticket Ready for Report": waits until every tap is saved so the report
+  /// screen sees the finished checklist, then opens it. Extra taps while
+  /// waiting are ignored.
+  Future<void> _openReport() async {
+    if (_isOpeningReport) return;
+    setState(() => _isOpeningReport = true);
+    final failedBefore = _failedWrites;
+    final result = await drainWrites(
+      _writes,
+      hadFailure: () => _failedWrites != failedBefore,
+    );
+    if (!mounted) return;
+    setState(() => _isOpeningReport = false);
+    if (result != DrainResult.saved) {
+      showAppSnack(
+        context,
+        'Could not save your checklist. Please try again.',
+        kind: SnackKind.error,
+      );
+      return;
+    }
+    Navigator.pushNamed(context, '/tech/report', arguments: widget.ticketId);
+  }
+
+  Future<void> _write(int index, bool value) async {
     final ref = FirebaseFirestore.instance
         .collection('tickets')
         .doc(widget.ticketId);
@@ -188,15 +251,21 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
         final snap = await tx.get(ref);
         final current = snap.data()?['checklistDone'];
         tx.update(ref, {
-          'checklistDone': flipChecklistItem(
+          'checklistDone': setChecklistItem(
             current is List ? current : const [],
             index,
+            value,
           ),
           'updatedAt': FieldValue.serverTimestamp(),
         });
       });
+      _overlay.succeeded(index);
+      if (mounted) setState(() {});
     } catch (_) {
+      _failedWrites++;
+      _overlay.failed(index);
       if (mounted) {
+        setState(() {});
         showAppSnack(
           context,
           'Could not update the checklist. Please try again.',
@@ -258,15 +327,12 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           ticketTitle: (data['title'] ?? '').toString(),
           category: (data['category'] ?? '').toString(),
           items: checklistItems,
-          done: checklistDone,
+          done: _overlay.apply(checklistDone),
           isGenerating: _isGenerating,
           onToggle: (index, value) => _handleToggle(index),
           onGenerate: () => _handleGenerate(data),
-          onReady: () => Navigator.pushNamed(
-            context,
-            '/tech/report',
-            arguments: widget.ticketId,
-          ),
+          onReady: _openReport,
+          isOpeningReport: _isOpeningReport,
         );
       },
     );
@@ -291,6 +357,10 @@ class ChecklistView extends StatelessWidget {
   /// Opens the service report ("Ticket Ready for Report").
   final VoidCallback onReady;
 
+  /// True while the screen waits for the last taps to be saved: the button
+  /// shows a spinner and ignores taps.
+  final bool isOpeningReport;
+
   const ChecklistView({
     super.key,
     required this.ticketTitle,
@@ -301,6 +371,7 @@ class ChecklistView extends StatelessWidget {
     required this.onToggle,
     required this.onGenerate,
     required this.onReady,
+    this.isOpeningReport = false,
   });
 
   @override
@@ -385,14 +456,28 @@ class ChecklistView extends StatelessWidget {
                     AppSpacing.s4,
                     AppSpacing.s4,
                   ),
-                  child: ElevatedButton.icon(
-                    onPressed: onReady,
+                  child: ElevatedButton(
+                    onPressed: isOpeningReport ? () {} : onReady,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.resolvedFg,
                       minimumSize: const Size.fromHeight(52),
                     ),
-                    icon: const Icon(Icons.check),
-                    label: const Text('Ticket Ready for Report'),
+                    child: isOpeningReport
+                        ? const SizedBox.square(
+                            dimension: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppColors.onPrimary,
+                            ),
+                          )
+                        : const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check),
+                              SizedBox(width: AppSpacing.s2),
+                              Text('Ticket Ready for Report'),
+                            ],
+                          ),
                   ),
                 ),
               ),

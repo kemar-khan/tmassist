@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,7 +9,9 @@ import '../../core/services/report_service.dart';
 import '../../core/services/cloudinary_service.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/image_picker_helper.dart';
+import '../../utils/checklist_toggle.dart';
 import '../../utils/photo_check.dart';
+import '../../utils/report_draft.dart';
 import '../../core/services/report_pdf_service.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/dashed_border.dart';
@@ -61,6 +64,26 @@ class _ReportScreenState extends State<ReportScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _ticketSub = FirebaseFirestore.instance
+        .collection('tickets')
+        .doc(widget.ticketId)
+        .snapshots()
+        .listen(_onTicketUpdate, onError: (_) {});
+  }
+
+  // Live checklist gate: only [_gateOpen] may change screen state here, so the
+  // notes, photo, signature and generated report are never touched.
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _ticketSub;
+  bool _gateOpen = false;
+
+  void _onTicketUpdate(DocumentSnapshot<Map<String, dynamic>> snap) {
+    final data = snap.data();
+    if (!mounted || data == null) return;
+    // Keep the ticket data fresh (the report text is built from it); this
+    // alone does not rebuild anything.
+    if (_ticketData != null) _ticketData = data;
+    final open = checklistComplete(data);
+    if (open != _gateOpen) setState(() => _gateOpen = open);
   }
 
   Future<void> _loadData() async {
@@ -81,6 +104,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
       setState(() {
         _ticketData = ticketData;
+        _gateOpen = checklistComplete(ticketData);
 
         if (existingReport != null) {
           _existingReport = existingReport;
@@ -91,12 +115,15 @@ class _ReportScreenState extends State<ReportScreen> {
           _proofUrl = existingReport['proofUrl'] ?? '';
           _reportGenerated = true;
         } else if (draft != null) {
-          _issueSummary = draft['issueSummary'] ?? '';
-          _stepsTaken = draft['stepsTaken'] ?? '';
-          _resolutionSummary = draft['resolutionSummary'] ?? '';
-          _techNotesController.text = draft['technicianNotes'] ?? '';
-          _proofUrl = draft['proofUrl'] ?? '';
-          _reportGenerated = true;
+          // The generated sections count only when the draft was built from
+          // the checklist the ticket has now; notes and photo always stay.
+          final restored = restoreDraft(draft, ticketData?['checklistItems']);
+          _issueSummary = restored.issueSummary;
+          _stepsTaken = restored.stepsTaken;
+          _resolutionSummary = restored.resolutionSummary;
+          _techNotesController.text = restored.notes;
+          _proofUrl = restored.proofUrl;
+          _reportGenerated = restored.generated;
         }
 
         _isLoading = false;
@@ -117,20 +144,6 @@ class _ReportScreenState extends State<ReportScreen> {
       'Your photo was recovered. Please sign again before submitting.',
     );
     _uploadProofFile(XFile(path));
-  }
-
-  /// The report can be generated only when every checklist item of the ticket
-  /// is done: `checklistItems` is not empty and each of them has a true flag
-  /// in `checklistDone`.
-  bool _checklistComplete(Map<String, dynamic>? data) {
-    final items = data?['checklistItems'];
-    final done = data?['checklistDone'];
-    if (items is! List || items.isEmpty) return false;
-    if (done is! List || done.length < items.length) return false;
-    for (var i = 0; i < items.length; i++) {
-      if (done[i] != true) return false;
-    }
-    return true;
   }
 
   /// Builds the report text from the ticket and its checklist. Nothing is
@@ -205,6 +218,7 @@ class _ReportScreenState extends State<ReportScreen> {
               'resolutionSummary': result.resolutionSummary,
               'technicianNotes': _techNotesController.text.trim(),
               'proofUrl': _proofUrl,
+              'checklistSignature': checklistSignature(data['checklistItems']),
             },
           )
           .catchError((_) {});
@@ -291,6 +305,9 @@ class _ReportScreenState extends State<ReportScreen> {
         'resolutionSummary': _resolutionSummary,
         'technicianNotes': _techNotesController.text.trim(),
         'proofUrl': _proofUrl,
+        'checklistSignature': checklistSignature(
+          _ticketData?['checklistItems'],
+        ),
       },
     );
   }
@@ -449,7 +466,7 @@ class _ReportScreenState extends State<ReportScreen> {
       notesController: _techNotesController,
       savedNotes: (report?['technicianNotes'] ?? '').toString(),
       proofUrl: _proofUrl,
-      canGenerate: _checklistComplete(data),
+      canGenerate: _gateOpen,
       isGenerating: _isGenerating,
       isSubmitting: _isSubmitting,
       isExporting: _isExporting,
@@ -462,7 +479,7 @@ class _ReportScreenState extends State<ReportScreen> {
       supervisorSignature: _decodeSignature(report?['supervisorSignature']),
       supervisorName: (report?['supervisorName'] ?? '').toString(),
       supervisorSignedAt: _time(report?['signedAt']),
-      onGenerate: () => _generateReport(data),
+      onGenerate: () => _generateReport(_ticketData ?? data),
       onUploadProof: _uploadProof,
       onRemoveProof: _removeProof,
       onSubmit: _submitReport,
@@ -472,6 +489,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   @override
   void dispose() {
+    _ticketSub?.cancel();
     _techNotesController.dispose();
     _sigController.dispose();
     super.dispose();
