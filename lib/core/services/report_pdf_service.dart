@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'dart:convert';
+import '../../utils/pdf_check.dart';
 
 class ReportPdfService {
   static final _blue = PdfColor.fromHex('005CAB');
@@ -317,10 +318,14 @@ class ReportPdfService {
       ),
     );
 
-    await Printing.layoutPdf(
-      name: _fileName(reportNo),
-      onLayout: (format) async => pdf.save(),
-    );
+    // Share a real .pdf file (a normal share sheet) instead of the phone's own
+    // print service, which saved broken files on some Xiaomi phones.
+    final bytes = await pdf.save();
+    if (!isValidPdfBytes(bytes)) {
+      // The callers' catch shows "Could not export the PDF. Please try again."
+      throw StateError('The PDF was not created correctly.');
+    }
+    await Printing.sharePdf(bytes: bytes, filename: _fileName(reportNo));
   }
 
   /// A file name made only of letters, digits, dot, dash and underscore.
