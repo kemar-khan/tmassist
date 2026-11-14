@@ -2,11 +2,15 @@
 
 import 'package:flutter/material.dart';
 import 'package:tmassist/features/auth/login_screen.dart';
+import 'features/auth/role_router.dart';
 import 'core/theme/app_theme.dart';
 import 'router.dart';
 
 class App extends StatelessWidget {
-  const App({super.key});
+  /// True when a user was already signed in at startup (see main.dart).
+  final bool signedIn;
+
+  const App({super.key, this.signedIn = false});
 
   @override
   Widget build(BuildContext context) {
@@ -14,7 +18,7 @@ class App extends StatelessWidget {
       title: 'TMAssist',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: const LoginScreen(),
+      home: signedIn ? const RoleRouter() : const LoginScreen(),
       onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }

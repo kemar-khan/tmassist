@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../core/config/timeouts.dart';
 import '../../core/services/auth_service.dart';
 import '../../widgets/stream_error.dart';
 import '../customer/customer_main_screen.dart';
@@ -22,15 +23,25 @@ class _RoleRouterState extends State<RoleRouter> {
   @override
   void initState() {
     super.initState();
-    _profile = _authService.getCurrentUserProfile();
+    _profile = _load();
   }
+
+  // The read gives up after 15 seconds; the error screen then offers
+  // Try Again and Log Out (a timeout reads as a slow-network message).
+  Future<Map<String, dynamic>?> _load() =>
+      _authService.getCurrentUserProfile().timeout(Timeouts.profileLoad);
 
   void _retry() {
-    setState(() => _profile = _authService.getCurrentUserProfile());
+    setState(() => _profile = _load());
   }
 
-  // The auth gate shows the login screen once the user is signed out.
-  void _logOut() => FirebaseAuth.instance.signOut();
+  // This screen can be the app's home route, so there is no gate to react to
+  // the sign-out: go to Login and clear the back stack.
+  Future<void> _logOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+  }
 
   Widget _problem({Object? error, String? message}) {
     return Scaffold(

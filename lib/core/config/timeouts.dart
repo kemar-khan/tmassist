@@ -20,6 +20,14 @@ class Timeouts {
   /// write stays queued while the phone is offline.
   static const ticketCreate = Duration(seconds: 20);
 
+  /// Reading the signed-in user's profile after the app starts. A bad network
+  /// must not leave the start screen spinning for ever.
+  static const profileLoad = Duration(seconds: 15);
+
+  /// Waiting for Firebase to hand back the session saved on the phone at
+  /// startup (no network is needed for this).
+  static const authRestore = Duration(seconds: 3);
+
   /// How long a Gemini call may run before the "Still working…" hint shows.
   static const slowHint = Duration(seconds: 10);
 }
