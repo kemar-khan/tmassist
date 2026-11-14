@@ -130,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   borderRadius: AppRadius.brLg,
                                 ),
                                 child: const Icon(
-                                  Icons.router_rounded,
+                                  Icons.confirmation_number_outlined,
                                   size: AppSpacing.s8 + AppSpacing.s1,
                                   color: AppColors.primary,
                                 ),
