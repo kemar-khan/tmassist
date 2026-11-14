@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../core/config/timeouts.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/theme/app_tokens.dart';
 import '../../widgets/stream_error.dart';
 import '../customer/customer_main_screen.dart';
 import '../supervisor/supervisor_main_screen.dart';
@@ -61,8 +62,13 @@ class _RoleRouterState extends State<RoleRouter> {
       builder: (context, snapshot) {
         // Loading
         if (snapshot.connectionState == ConnectionState.waiting) {
+          // Brand blue with a white spinner, so the native splash flows into
+          // this screen without a white flash.
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            backgroundColor: AppColors.primary,
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.onPrimary),
+            ),
           );
         }
 

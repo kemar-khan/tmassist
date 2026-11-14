@@ -1,0 +1,18 @@
+# Native splash screen (Android only). Regenerate with:
+#   dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#005CAB"
+  image: assets/images/splash_logo.png
+
+  # Dark mode shows the same splash.
+  color_dark: "#005CAB"
+  image_dark: assets/images/splash_logo.png
+
+  android: true
+  ios: false
+  web: false
+
+  android_12:
+    color: "#005CAB"
+    image: assets/images/splash_logo.png
+    icon_background_color: "#005CAB"
