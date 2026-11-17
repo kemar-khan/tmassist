@@ -478,7 +478,7 @@ class TechnicianInfoCard extends StatelessWidget {
                   borderRadius: AppRadius.brPill,
                 ),
                 child: Text(
-                  'AUTO ASSIGNED',
+                  'Assigned',
                   style: AppText.caption.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w600,

@@ -246,6 +246,7 @@ class _SupervisorTicketDetailScreenState
               technicianId: (data['technicianId'] ?? '').toString(),
               assignmentType: (data['assignmentType'] ?? '').toString(),
               assignmentNote: (data['assignmentNote'] ?? '').toString(),
+              assignedOutsideCoverage: data['assignedOutsideCoverage'] == true,
               createdAt: createdAt?.toDate(),
               updatedAt: updatedAt?.toDate(),
               report: report,
@@ -291,6 +292,10 @@ class SupervisorTicketDetailView extends StatelessWidget {
   /// 'AUTO' for an automatic assignment.
   final String assignmentType;
   final String assignmentNote;
+
+  /// True when the technician was assigned although the ticket's area is not
+  /// one of their coverage areas (saved at assignment time).
+  final bool assignedOutsideCoverage;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -322,6 +327,7 @@ class SupervisorTicketDetailView extends StatelessWidget {
     required this.technicianId,
     required this.assignmentType,
     required this.assignmentNote,
+    this.assignedOutsideCoverage = false,
     required this.createdAt,
     required this.updatedAt,
     required this.report,
@@ -423,7 +429,9 @@ class SupervisorTicketDetailView extends StatelessWidget {
                   style: AppText.heading.copyWith(color: AppColors.ink),
                 ),
               ),
-              if (assignmentType == 'AUTO') ...[
+              // Shown only inside this card, which exists only for an assigned
+              // ticket (an unassigned one also carries 'MANUAL' by default).
+              if (assignmentType == 'AUTO' || assignmentType == 'MANUAL') ...[
                 const SizedBox(width: AppSpacing.s2),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -435,7 +443,7 @@ class SupervisorTicketDetailView extends StatelessWidget {
                     borderRadius: AppRadius.brPill,
                   ),
                   child: Text(
-                    'AUTO',
+                    assignmentType,
                     style: AppText.caption.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w600,
@@ -445,6 +453,29 @@ class SupervisorTicketDetailView extends StatelessWidget {
               ],
             ],
           ),
+          if (assignedOutsideCoverage) ...[
+            const SizedBox(height: AppSpacing.s3),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.s3,
+                  vertical: AppSpacing.s1,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.accentTint,
+                  borderRadius: AppRadius.brPill,
+                ),
+                child: Text(
+                  'Outside Coverage Area',
+                  style: AppText.caption.copyWith(
+                    color: AppColors.accentStrong,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (assignmentNote.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.s3),
             Container(

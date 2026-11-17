@@ -11,6 +11,7 @@ import '../../widgets/status_badge.dart';
 import '../../widgets/status_style.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/stream_error.dart';
+import '../../utils/assignment_label.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -154,6 +155,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           createdAt: time(data['createdAt']),
           updatedAt: time(data['updatedAt']),
           assignedAt: time(data['assignedAt']),
+          assignmentType: (data['assignmentType'] ?? '').toString(),
+          outsideCoverageArea:
+              data['assignedOutsideCoverage'] == true &&
+                  (data['area'] ?? '').toString().trim().isNotEmpty
+              ? (data['area'] ?? '').toString().trim()
+              : '',
           checklistDone: List<bool>.from(
             (data['checklistDone'] ?? []).map((e) => e == true),
           ),
@@ -195,6 +202,13 @@ class TechJobDetailView extends StatelessWidget {
 
   /// When the ticket was assigned, if the ticket records it.
   final DateTime? assignedAt;
+
+  /// `AUTO` or `MANUAL`; anything else shows no "how it was assigned" row.
+  final String assignmentType;
+
+  /// The ticket's area when this job was assigned outside the technician's
+  /// coverage areas; empty otherwise (and for old tickets).
+  final String outsideCoverageArea;
   final List<bool> checklistDone;
 
   /// True while START JOB is running: the button shows a spinner and ignores
@@ -217,6 +231,8 @@ class TechJobDetailView extends StatelessWidget {
     required this.createdAt,
     required this.updatedAt,
     required this.assignedAt,
+    this.assignmentType = '',
+    this.outsideCoverageArea = '',
     required this.checklistDone,
     required this.isUpdating,
     required this.onStartJob,
@@ -241,6 +257,42 @@ class TechJobDetailView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildStatusCard(),
+              if ((status == 'ASSIGNED' || status == 'IN_PROGRESS') &&
+                  assignmentSourceLabel(assignmentType) != null) ...[
+                const SizedBox(height: AppSpacing.s4),
+                _buildAssignmentSourceRow(
+                  assignmentSourceLabel(assignmentType)!,
+                ),
+              ],
+              if (outsideCoverageArea.isNotEmpty &&
+                  (status == 'ASSIGNED' || status == 'IN_PROGRESS')) ...[
+                const SizedBox(height: AppSpacing.s4),
+                SectionCard(
+                  title: 'Outside Your Coverage Areas',
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const ExcludeSemantics(
+                        child: Icon(
+                          Icons.info_outline,
+                          color: AppColors.accentStrong,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.s3),
+                      Expanded(
+                        child: Text(
+                          'This job is in $outsideCoverageArea, which is not '
+                          'one of your coverage areas.',
+                          style: AppText.body.copyWith(
+                            color: AppColors.inkMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (status != CancelledStatus.value) ...[
                 const SizedBox(height: AppSpacing.s4),
                 _buildActionsCard(),
@@ -263,6 +315,41 @@ class TechJobDetailView extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------- assignment source
+
+  Widget _buildAssignmentSourceRow(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.s4,
+        vertical: AppSpacing.s3,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ExcludeSemantics(
+            child: Icon(
+              Icons.assignment_ind_outlined,
+              color: AppColors.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.s3),
+          Expanded(
+            child: Text(
+              label,
+              style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -9,6 +9,7 @@ import '../../widgets/picker_sheet.dart';
 import '../../widgets/status_badge.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/stream_error.dart';
+import '../../utils/coverage.dart';
 
 class AssignTicketScreen extends StatefulWidget {
   final String ticketId;
@@ -22,6 +23,8 @@ class AssignTicketScreen extends StatefulWidget {
 class _AssignTicketScreenState extends State<AssignTicketScreen> {
   String? _selectedTechnicianId;
   String? _selectedTechnicianName;
+  // The picked technician's coverage areas (from the list already loaded).
+  List<String>? _selectedCoverage;
   bool _isLoading = false;
 
   // The streams are created once: creating them inside build() would
@@ -84,12 +87,22 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
         return;
       }
 
+      // Recomputed for the newly chosen technician, and the note replaced so
+      // an old automatic note never stays on a manual assignment.
+      final area = (current.data()?['area'] ?? '').toString().trim();
+      final outside = isOutsideCoverage(_selectedCoverage, area);
+
       await ref.update({
         'technicianId': _selectedTechnicianId,
         'technicianName': _selectedTechnicianName,
         'supervisorId': supervisor.uid,
         'status': 'ASSIGNED',
         'assignmentType': 'MANUAL',
+        'assignedAt': FieldValue.serverTimestamp(),
+        'assignedOutsideCoverage': outside,
+        // Empty on purpose: the MANUAL label says how it was assigned and the
+        // pill says coverage. Still written, so an old auto note is cleared.
+        'assignmentNote': '',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -225,11 +238,15 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
                   (doc) => doc.id == val,
                 );
                 final data = selectedDoc.data() as Map<String, dynamic>;
+                final coverage = data['coverageAreas'];
 
                 setState(() {
                   _selectedTechnicianId = val;
                   _selectedTechnicianName =
                       (data['fullName'] ?? 'Unnamed Technician').toString();
+                  _selectedCoverage = coverage is List
+                      ? [for (final a in coverage) a.toString()]
+                      : null;
                 });
               },
               onConfirm: _handleAssign,

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../utils/coverage.dart';
 
 class AutoAssignmentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -47,9 +48,16 @@ class AutoAssignmentService {
           .where((t) => matchesSkill(t) && coversArea(t))
           .toList();
 
+      // The normal match found someone. For an "Other" (or empty) area that
+      // says why nobody's coverage was checked.
+      if (candidates.isNotEmpty && isAnyArea(area)) {
+        note = 'Area marked as Other, assigned by skill and workload';
+      }
+
       if (candidates.isEmpty) {
+        // Skill matched, coverage did not: the "Outside Coverage Area" pill
+        // (assignedOutsideCoverage) says that, so the note stays empty.
         candidates = allTechs.where(matchesSkill).toList();
-        if (candidates.isNotEmpty) note = 'Outside coverage area';
       }
       if (candidates.isEmpty) {
         candidates = allTechs.where((t) {
@@ -67,6 +75,7 @@ class AutoAssignmentService {
 
       String? bestTechnicianId;
       String bestTechnicianName = 'Unknown Technician';
+      List<String>? bestCoverage;
       double bestScore = -1;
 
       for (final techDoc in candidates) {
@@ -112,6 +121,10 @@ class AutoAssignmentService {
           bestTechnicianId = techId;
           bestTechnicianName = (techData['fullName'] ?? 'Unknown Technician')
               .toString();
+          final coverage = techData['coverageAreas'];
+          bestCoverage = coverage is List
+              ? [for (final a in coverage) a.toString()]
+              : null;
         }
       }
 
@@ -123,6 +136,8 @@ class AutoAssignmentService {
           'assignedAt': FieldValue.serverTimestamp(),
           'assignmentType': 'AUTO',
           'assignmentNote': note,
+          // A snapshot at assignment time; never recomputed later.
+          'assignedOutsideCoverage': isOutsideCoverage(bestCoverage, area),
         });
       }
 
