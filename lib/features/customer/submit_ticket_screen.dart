@@ -12,6 +12,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../../core/services/ai_extraction_service.dart';
 import '../../core/constants/service_areas.dart';
+import '../../utils/canonical_area.dart';
 import '../../utils/friendly_error.dart';
 import 'dart:async';
 import '../../core/config/timeouts.dart';
@@ -334,8 +335,10 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
           _addressController.text = result['address']!;
           _address = result['address'];
         }
-        final aiArea = result['area'];
-        if (aiArea != null && ServiceAreas.all.contains(aiArea)) {
+        // Ignore case and spaces, but always store the canonical spelling:
+        // auto-assignment compares exact strings.
+        final aiArea = canonicalArea(result['area']);
+        if (aiArea != null) {
           _selectedArea = aiArea;
         }
       });
