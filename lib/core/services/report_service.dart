@@ -38,6 +38,19 @@ class ReportService {
     });
   }
 
+  /// Saves ONLY the technician notes (and the time) into the draft. A merge
+  /// write, so the generated texts, photo and checklist signature already in
+  /// the draft are never touched. Creates a notes-only draft when none exists.
+  Future<void> saveDraftNotes({
+    required String ticketId,
+    required String notes,
+  }) async {
+    await _firestore.collection('drafts').doc(ticketId).set({
+      'technicianNotes': notes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Future<Map<String, dynamic>?> getDraft(String ticketId) async {
     final doc = await _firestore.collection('drafts').doc(ticketId).get();
     if (!doc.exists) return null;

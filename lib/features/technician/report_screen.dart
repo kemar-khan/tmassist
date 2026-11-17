@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +16,9 @@ import '../../widgets/app_snack.dart';
 import '../../widgets/dashed_border.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/section_card.dart';
+import '../../utils/debouncer.dart';
+import '../../utils/checklist_summary.dart';
+import 'package:flutter/foundation.dart';
 
 class ReportScreen extends StatefulWidget {
   final String ticketId;
@@ -35,7 +37,8 @@ class ReportScreen extends StatefulWidget {
   State<ReportScreen> createState() => _ReportScreenState();
 }
 
-class _ReportScreenState extends State<ReportScreen> {
+class _ReportScreenState extends State<ReportScreen>
+    with WidgetsBindingObserver {
   final ReportService _reportService = ReportService();
   final TextEditingController _techNotesController = TextEditingController();
   // Created once and disposed in dispose(); never rebuilt with the widget.
@@ -53,16 +56,26 @@ class _ReportScreenState extends State<ReportScreen> {
 
   String _issueSummary = '';
   String _stepsTaken = '';
-  String _resolutionSummary = '';
   String _proofUrl = '';
   bool _isUploadingProof = false;
 
   Map<String, dynamic>? _ticketData;
   Map<String, dynamic>? _existingReport;
 
+  // Notes autosave: about a second after typing stops, only the notes are
+  // merged into the draft. Switched off for good once Submit starts, so a late
+  // save can never recreate the draft after it was deleted.
+  final Debouncer _notesDebouncer = Debouncer(
+    delay: const Duration(seconds: 1),
+  );
+  String _lastSavedNotes = '';
+  bool _autosaveEnabled = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _techNotesController.addListener(_onNotesChanged);
     _loadData();
     _ticketSub = FirebaseFirestore.instance
         .collection('tickets')
@@ -110,7 +123,6 @@ class _ReportScreenState extends State<ReportScreen> {
           _existingReport = existingReport;
           _issueSummary = existingReport['issueSummary'] ?? '';
           _stepsTaken = existingReport['stepsTaken'] ?? '';
-          _resolutionSummary = existingReport['resolutionSummary'] ?? '';
           _techNotesController.text = existingReport['technicianNotes'] ?? '';
           _proofUrl = existingReport['proofUrl'] ?? '';
           _reportGenerated = true;
@@ -120,13 +132,13 @@ class _ReportScreenState extends State<ReportScreen> {
           final restored = restoreDraft(draft, ticketData?['checklistItems']);
           _issueSummary = restored.issueSummary;
           _stepsTaken = restored.stepsTaken;
-          _resolutionSummary = restored.resolutionSummary;
           _techNotesController.text = restored.notes;
           _proofUrl = restored.proofUrl;
           _reportGenerated = restored.generated;
         }
 
         _isLoading = false;
+        _lastSavedNotes = _techNotesController.text.trim();
       });
       _handleRecoveredPhoto();
     } catch (e) {
@@ -148,8 +160,9 @@ class _ReportScreenState extends State<ReportScreen> {
 
   /// Builds the report text from the ticket and its checklist. Nothing is
   /// sent anywhere.
-  ({String issueSummary, String stepsTaken, String resolutionSummary})
-  _buildReportText(Map<String, dynamic> data) {
+  ({String issueSummary, String stepsTaken}) _buildReportText(
+    Map<String, dynamic> data,
+  ) {
     final description = data['description']?.toString() ?? '';
 
     final rawItems = data['checklistItems'];
@@ -175,13 +188,7 @@ class _ReportScreenState extends State<ReportScreen> {
       allSteps.add('${isDone ? '✓' : '✗'} $title');
     }
 
-    return (
-      issueSummary: description,
-      stepsTaken: allSteps.join('\n'),
-      resolutionSummary:
-          'Issue has been resolved by the assigned technician. '
-          'All critical checklist items have been completed successfully.',
-    );
+    return (issueSummary: description, stepsTaken: allSteps.join('\n'));
   }
 
   Future<void> _generateReport(Map<String, dynamic> data) async {
@@ -203,7 +210,6 @@ class _ReportScreenState extends State<ReportScreen> {
       setState(() {
         _issueSummary = result.issueSummary;
         _stepsTaken = result.stepsTaken;
-        _resolutionSummary = result.resolutionSummary;
         _reportGenerated = true;
         _ticketData = data;
       });
@@ -215,13 +221,13 @@ class _ReportScreenState extends State<ReportScreen> {
             draftData: {
               'issueSummary': result.issueSummary,
               'stepsTaken': result.stepsTaken,
-              'resolutionSummary': result.resolutionSummary,
               'technicianNotes': _techNotesController.text.trim(),
               'proofUrl': _proofUrl,
               'checklistSignature': checklistSignature(data['checklistItems']),
             },
           )
           .catchError((_) {});
+      _lastSavedNotes = _techNotesController.text.trim();
 
       showAppSnack(
         context,
@@ -296,13 +302,14 @@ class _ReportScreenState extends State<ReportScreen> {
 
   // Keeps the draft in sync after the report has been generated
   Future<void> _saveDraftNow() async {
-    if (!_reportGenerated) return;
+    // Never after Submit started: that could recreate the deleted draft.
+    if (!_reportGenerated || !_autosaveEnabled) return;
+    _lastSavedNotes = _techNotesController.text.trim();
     await _reportService.saveDraft(
       ticketId: widget.ticketId,
       draftData: {
         'issueSummary': _issueSummary,
         'stepsTaken': _stepsTaken,
-        'resolutionSummary': _resolutionSummary,
         'technicianNotes': _techNotesController.text.trim(),
         'proofUrl': _proofUrl,
         'checklistSignature': checklistSignature(
@@ -320,6 +327,11 @@ class _ReportScreenState extends State<ReportScreen> {
       return;
     }
 
+    // From here on nothing may write the draft again: cancel a pending notes
+    // save and switch autosave off for the rest of this screen's life.
+    _autosaveEnabled = false;
+    _notesDebouncer.cancel();
+
     setState(() => _isSubmitting = true);
 
     try {
@@ -335,6 +347,7 @@ class _ReportScreenState extends State<ReportScreen> {
       }
 
       final data = _ticketData!;
+      final counts = checklistCounts(data);
 
       await _reportService.saveReport(
         ticketId: widget.ticketId,
@@ -348,7 +361,8 @@ class _ReportScreenState extends State<ReportScreen> {
           'createdAt': data['createdAt'],
           'issueSummary': _issueSummary,
           'stepsTaken': _stepsTaken,
-          'resolutionSummary': _resolutionSummary,
+          'checklistCompletedCount': counts.done,
+          'checklistTotalCount': counts.total,
           'technicianNotes': _techNotesController.text.trim(),
           'supervisorComments': '',
           'proofUrl': _proofUrl,
@@ -390,6 +404,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       final data = _ticketData;
+      final counts = checklistCounts(data);
       final report =
           _existingReport ??
           {
@@ -400,7 +415,8 @@ class _ReportScreenState extends State<ReportScreen> {
             'createdAt': data?['createdAt'],
             'issueSummary': _issueSummary,
             'stepsTaken': _stepsTaken,
-            'resolutionSummary': _resolutionSummary,
+            'checklistCompletedCount': counts.done,
+            'checklistTotalCount': counts.total,
             'technicianNotes': _techNotesController.text.trim(),
             'proofUrl': _proofUrl,
           };
@@ -458,11 +474,21 @@ class _ReportScreenState extends State<ReportScreen> {
         ? ReportStage.generated
         : ReportStage.before;
 
+    // The "Checklist: X of Y Completed" line: from the saved fields of a
+    // submitted report (old reports have none), from the ticket before that.
+    final counts = report != null
+        ? savedChecklistCounts(report)
+        : (stage == ReportStage.generated ? checklistCounts(data) : null);
+
     return ServiceReportView(
       stage: stage,
       issueSummary: _issueSummary,
       stepsTaken: _stepsTaken,
-      resolutionSummary: _resolutionSummary,
+      checklistLine: counts == null
+          ? ''
+          : checklistSummaryLine(counts.done, counts.total),
+      // Old submitted reports only; new reports have no resolution summary.
+      resolutionSummary: (report?['resolutionSummary'] ?? '').toString(),
       notesController: _techNotesController,
       savedNotes: (report?['technicianNotes'] ?? '').toString(),
       proofUrl: _proofUrl,
@@ -487,8 +513,44 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
+  // ------------------------------------------------------- notes autosave
+
+  void _onNotesChanged() {
+    // Not while loading (the text is being filled in), not after Submit, and
+    // never for a submitted report.
+    if (_isLoading || !_autosaveEnabled || _existingReport != null) return;
+    _notesDebouncer.run(_saveNotes);
+  }
+
+  Future<void> _saveNotes() async {
+    if (!_autosaveEnabled || _existingReport != null) return;
+    // Read synchronously, so a save flushed from dispose() still sees the text.
+    final text = _techNotesController.text.trim();
+    if (text == _lastSavedNotes) return;
+    try {
+      await _reportService.saveDraftNotes(
+        ticketId: widget.ticketId,
+        notes: text,
+      );
+      _lastSavedNotes = text;
+    } catch (e) {
+      // Silent for the user; the next change tries again.
+      if (kDebugMode) debugPrint('[notes autosave] failed: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _notesDebouncer.flush();
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _techNotesController.removeListener(_onNotesChanged);
+    // A pending save goes out now; after Submit started nothing is written.
+    if (_autosaveEnabled) _notesDebouncer.flush();
+    _notesDebouncer.cancel();
     _ticketSub?.cancel();
     _techNotesController.dispose();
     _sigController.dispose();
@@ -507,7 +569,12 @@ class ServiceReportView extends StatelessWidget {
 
   /// One line per checklist step, starting with a tick or a cross.
   final String stepsTaken;
+
+  /// Legacy: only old submitted reports have one; shown only when not empty.
   final String resolutionSummary;
+
+  /// "Checklist: X of Y Completed", shown under Steps Taken; empty hides it.
+  final String checklistLine;
 
   /// The editable notes (before submitting) and the notes saved with a
   /// submitted report.
@@ -546,7 +613,8 @@ class ServiceReportView extends StatelessWidget {
     required this.stage,
     required this.issueSummary,
     required this.stepsTaken,
-    required this.resolutionSummary,
+    this.resolutionSummary = '',
+    this.checklistLine = '',
     required this.notesController,
     required this.savedNotes,
     required this.proofUrl,
@@ -597,8 +665,10 @@ class ServiceReportView extends StatelessWidget {
               const SizedBox(height: AppSpacing.s4),
               _stepsCard(),
               const SizedBox(height: AppSpacing.s4),
-              _textCard('Resolution Summary', resolutionSummary),
-              const SizedBox(height: AppSpacing.s4),
+              if (_submitted && resolutionSummary.isNotEmpty) ...[
+                _textCard('Resolution Summary', resolutionSummary),
+                const SizedBox(height: AppSpacing.s4),
+              ],
               _notesCard(),
               const SizedBox(height: AppSpacing.s4),
               _proofCard(),
@@ -668,6 +738,13 @@ class ServiceReportView extends StatelessWidget {
           for (var i = 0; i < lines.length; i++) ...[
             if (i > 0) const SizedBox(height: AppSpacing.s2),
             _StepLine(line: lines[i]),
+          ],
+          if (checklistLine.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.s3),
+            Text(
+              checklistLine,
+              style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+            ),
           ],
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'dart:convert';
 import '../../utils/pdf_check.dart';
+import '../../utils/checklist_summary.dart';
 
 class ReportPdfService {
   static final _blue = PdfColor.fromHex('005CAB');
@@ -11,7 +12,8 @@ class ReportPdfService {
   static const _border = PdfColors.grey400;
 
   /// [report] keys used: category, customerName, technicianName, address,
-  /// createdAt, submittedAt, issueSummary, stepsTaken, resolutionSummary,
+  /// createdAt, submittedAt, issueSummary, stepsTaken, checklistCompletedCount,
+  /// checklistTotalCount, resolutionSummary (old reports only),
   /// technicianNotes, supervisorComments, proofUrl, technicianSignature,
   /// technicianSignedAt, supervisorSignature, supervisorName, signedAt
   static Future<void> export({
@@ -69,6 +71,15 @@ class ReportPdfService {
           return MapEntry(title, done);
         })
         .toList();
+
+    // Old reports have a resolution summary; new ones do not.
+    final resolution = (report['resolutionSummary'] ?? '').toString().trim();
+
+    // "Checklist: X of Y Completed", when the report saved both counts.
+    final savedCounts = savedChecklistCounts(report);
+    final checklistLine = savedCounts == null
+        ? null
+        : checklistSummaryLine(savedCounts.done, savedCounts.total);
 
     final notes = (report['technicianNotes'] ?? '').toString().trim();
     final supervisorComments = (report['supervisorComments'] ?? '')
@@ -255,11 +266,17 @@ class ReportPdfService {
                 }),
               ],
             ),
+          if (checklistLine != null) ...[
+            pw.SizedBox(height: 6),
+            _body(checklistLine),
+          ],
           pw.SizedBox(height: 18),
 
-          _heading(num('RESOLUTION SUMMARY')),
-          _body(field('resolutionSummary')),
-          pw.SizedBox(height: 18),
+          if (resolution.isNotEmpty) ...[
+            _heading(num('RESOLUTION SUMMARY')),
+            _body(resolution),
+            pw.SizedBox(height: 18),
+          ],
 
           _heading(num('TECHNICIAN NOTES')),
           _body(notes.isEmpty ? 'No additional notes.' : notes),

@@ -13,7 +13,6 @@ void main() {
   }) => {
     'issueSummary': 'Slow internet',
     'stepsTaken': steps,
-    'resolutionSummary': 'Fixed',
     'technicianNotes': 'My notes',
     'proofUrl': 'https://x/p.jpg',
     'checklistSignature': ?sig,
@@ -37,7 +36,6 @@ void main() {
     expect(r.generated, isTrue);
     expect(r.stepsTaken, '✓ Check the cable');
     expect(r.issueSummary, 'Slow internet');
-    expect(r.resolutionSummary, 'Fixed');
     expect(r.notes, 'My notes');
     expect(r.proofUrl, 'https://x/p.jpg');
   });
@@ -52,7 +50,6 @@ void main() {
       expect(r.generated, isFalse);
       expect(r.stepsTaken, '');
       expect(r.issueSummary, '');
-      expect(r.resolutionSummary, '');
       expect(r.notes, 'My notes');
       expect(r.proofUrl, 'https://x/p.jpg');
     },

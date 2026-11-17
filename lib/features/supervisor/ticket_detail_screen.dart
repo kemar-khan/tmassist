@@ -16,6 +16,7 @@ import '../../widgets/section_card.dart';
 import '../../widgets/status_style.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/stream_error.dart';
+import '../../utils/checklist_summary.dart';
 
 class SupervisorTicketDetailScreen extends StatefulWidget {
   final String ticketId;
@@ -584,6 +585,9 @@ class SupervisorTicketDetailView extends StatelessWidget {
     final techSignature = _decodeSignature(
       (report['technicianSignature'] ?? '').toString(),
     );
+    // Old reports have a resolution summary and no checklist counts.
+    final resolution = (report['resolutionSummary'] ?? '').toString().trim();
+    final counts = savedChecklistCounts(report);
 
     return SectionCard(
       title: 'Service Report',
@@ -592,10 +596,16 @@ class SupervisorTicketDetailView extends StatelessWidget {
         children: [
           _ReportText(label: 'Issue Summary', value: report['issueSummary']),
           _ReportText(label: 'Steps Taken', value: report['stepsTaken']),
-          _ReportText(
-            label: 'Resolution Summary',
-            value: report['resolutionSummary'],
-          ),
+          if (counts != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.s3),
+              child: Text(
+                checklistSummaryLine(counts.done, counts.total),
+                style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+              ),
+            ),
+          if (resolution.isNotEmpty)
+            _ReportText(label: 'Resolution Summary', value: resolution),
           _ReportText(
             label: 'Technician Notes',
             value: (report['technicianNotes'] ?? '').toString().isEmpty

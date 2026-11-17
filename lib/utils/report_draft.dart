@@ -14,7 +14,6 @@ class RestoredDraft {
     required this.generated,
     this.issueSummary = '',
     this.stepsTaken = '',
-    this.resolutionSummary = '',
     this.notes = '',
     this.proofUrl = '',
   });
@@ -23,7 +22,6 @@ class RestoredDraft {
   final bool generated;
   final String issueSummary;
   final String stepsTaken;
-  final String resolutionSummary;
 
   /// The technician's own input; kept even when the generated part is not.
   final String notes;
@@ -58,7 +56,6 @@ RestoredDraft restoreDraft(
     generated: true,
     issueSummary: text('issueSummary'),
     stepsTaken: steps,
-    resolutionSummary: text('resolutionSummary'),
     notes: notes,
     proofUrl: proof,
   );
@@ -66,7 +63,9 @@ RestoredDraft restoreDraft(
 
 /// The draft fields cleared when the checklist changes. `technicianNotes` and
 /// `proofUrl` are deliberately not in this list, and `checklistSignature` is
-/// removed by the caller (with a delete marker).
+/// removed by the caller (with a delete marker). `resolutionSummary` is a
+/// legacy field (no longer written); it is still cleared so old drafts are
+/// cleaned.
 const staleDraftFields = <String, Object?>{
   'issueSummary': '',
   'stepsTaken': '',
