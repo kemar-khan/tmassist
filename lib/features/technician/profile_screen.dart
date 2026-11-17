@@ -392,7 +392,7 @@ class _CoverageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final choices = ServiceAreas.all.where((a) => a != 'Other').toList();
+    final choices = ServiceAreas.coverageChoices;
     final count = areas.length;
 
     // Two equal columns; a row grows with its tallest button.

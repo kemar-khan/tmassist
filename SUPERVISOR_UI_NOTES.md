@@ -109,7 +109,7 @@ Nothing under `lib/features/supervisor/` uses `lib/core/theme/` or `lib/widgets/
 
 ## 4. DATA SHOWN ON EACH SCREEN
 
-**Statuses stored** (uppercase strings in `tickets.status`): `NEW`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `CANCELLED`. There is **no priority field** anywhere. Categories: `Network`, `Hardware`, `Software`, `Other` (anything else is counted as Other on Home). Areas (`ServiceAreas.all`): Puchong, Subang Jaya, Shah Alam, Petaling Jaya, Kuala Lumpur, Klang, Other.
+**Statuses stored** (uppercase strings in `tickets.status`): `NEW`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `CANCELLED`. There is **no priority field** anywhere. Categories: `Network`, `Hardware`, `Software`, `Other` (anything else is counted as Other on Home). Areas (`ServiceAreas.all`): Kuala Lumpur, Putrajaya, Petaling Jaya, Subang Jaya, Shah Alam, Puchong, Klang, Kajang, Rawang, Cyberjaya, Other.
 
 **Home** (one `tickets` stream ordered by `createdAt` descending, plus `users/{uid}` for the name)
 - Header: "Welcome back," and "<fullName or email or 'Supervisor'> | Supervisor".
@@ -266,7 +266,7 @@ Counts of hard-coded colour/size usage per file (`withOpacity` / `Color(0x…)` 
 - **Titles** (example sentences from the AI dialog): "My internet is not working since this morning", "The WiFi router keeps disconnecting", "My TV box shows no signal", "Internet has been down since morning".
 - **Ticket ids**: Firestore auto ids, e.g. `7fQ2kLmZpX9aB3cD4eRt` (20 characters).
 - **Technicians** (invented): Aisyah Rahman, Daniel Lim, Farah Nabila, Hakim Yusof. Specializations: "Fiber Optics / Broadband" (the technician-profile fallback), "Network", "Hardware", "Software", "Generalist".
-- **Coverage areas**: Puchong, Subang Jaya, Shah Alam, Petaling Jaya, Kuala Lumpur, Klang.
+- **Coverage areas**: Kuala Lumpur, Putrajaya, Petaling Jaya, Subang Jaya, Shah Alam, Puchong, Klang, Kajang, Rawang, Cyberjaya.
 - **Supervisor profile fallbacks in code**: Staff ID "TM-99821", Department "Field Technician Supervisor".
 - **Auto-assign notes** (`assignmentNote`): "Outside coverage area", "No matching specialist, assigned to general technician", "No matching specialist or coverage, assigned by workload".
 - **Counts** (plausible): total 42, New 6, Assigned 9, In Progress 11, Resolved 8, Closed 8; categories Network 20, Hardware 9, Software 7, Other 6; weekly Mon–Sun 4, 7, 5, 9, 6, 2, 1.

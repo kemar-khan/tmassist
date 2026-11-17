@@ -222,7 +222,7 @@ Data: `users/{uid}` streamed.
 **Layout**
 1. Blue header: avatar with the first letter of the name (fallback 'T'), name, and a pill "FIELD TECHNICIAN" (hard-coded).
 2. Rows: "Staff ID" (`staffId`, else `employeeId`, else "TECH-4402"), "Email Address" (`email`, else auth email, else "-"), "Specialization" (`specialization`, else "Fiber Optics / Broadband").
-3. "Coverage Areas" card: header shows "No Areas Assigned" or "n area(s) assigned"; a 2-column grid of toggle chips, one per area in `ServiceAreas.all` except 'Other': Puchong, Subang Jaya, Shah Alam, Petaling Jaya, Kuala Lumpur, Klang. Selected = blue with a check icon, unselected = grey with a plus icon. Helper text: "Tap an area to add or remove it. New tickets in these areas are assigned to you first."
+3. "Coverage Areas" card: header shows "No Areas Assigned" or "n area(s) assigned"; a 2-column grid of toggle chips, one per area in `ServiceAreas.all` except 'Other': Kuala Lumpur, Putrajaya, Petaling Jaya, Subang Jaya, Shah Alam, Puchong, Klang, Kajang, Rawang, Cyberjaya. Selected = blue with a check icon, unselected = grey with a plus icon. Helper text: "Tap an area to add or remove it. New tickets in these areas are assigned to you first."
 4. "LOGOUT" outlined red button.
 
 **Behaviour**
