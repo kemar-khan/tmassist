@@ -7,8 +7,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/area_grouping.dart';
 import '../../utils/cancelled_status.dart';
-import '../../utils/duration_format.dart';
-import '../../utils/report_dates.dart';
 
 class TechAnalyticsScreen extends StatefulWidget {
   const TechAnalyticsScreen({super.key});
@@ -25,14 +23,9 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
   bool _loaded = false;
   Object? _error;
 
-  // When each resolved ticket's report was submitted. Shared with the Home
-  // tab, so every report is read once between them.
-  final ReportDateCache _reports = ReportDateCache.instance;
-
   @override
   void initState() {
     super.initState();
-    _reports.addListener(_onReportDates);
     _listen();
   }
 
@@ -53,7 +46,6 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
               _loaded = true;
               _error = null;
             });
-            _requestReports();
           },
           onError: (e) {
             if (!mounted) return;
@@ -64,28 +56,11 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
 
   @override
   void dispose() {
-    _reports.removeListener(_onReportDates);
     _sub?.cancel();
     super.dispose();
   }
 
   static const _resolvedStatuses = {'RESOLVED', 'CLOSED'};
-
-  void _onReportDates() {
-    if (mounted) setState(() {});
-  }
-
-  /// Asks the shared cache for the reports of the resolved tickets, for the
-  /// average resolution time.
-  void _requestReports() {
-    final wanted = <String, String>{};
-    for (final doc in _docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final status = (data['status'] ?? '').toString().toUpperCase();
-      if (_resolvedStatuses.contains(status)) wanted[doc.id] = status;
-    }
-    _reports.ensure(wanted);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -161,27 +136,6 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
         ? totalCompletionRate / ticketsWithChecklist
         : 0.0;
 
-    // --- Average resolution time: report submitted minus ticket created ---
-    final durations = <Duration>[];
-    for (final doc in docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final status = (data['status'] ?? '').toString().toUpperCase();
-      if (!_resolvedStatuses.contains(status)) continue;
-      final submitted = _reports[doc.id];
-      final createdAt = data['createdAt'];
-      if (submitted == null || createdAt is! Timestamp) continue;
-      final taken = submitted.difference(createdAt.toDate());
-      if (taken.isNegative) continue;
-      durations.add(taken);
-    }
-    final avgResolution = durations.isEmpty
-        ? null
-        : Duration(
-            microseconds:
-                durations.fold<int>(0, (s, d) => s + d.inMicroseconds) ~/
-                durations.length,
-          );
-
     // --- Tickets by area ---
     final areas = groupByArea([
       for (final doc in docs)
@@ -198,7 +152,6 @@ class _TechAnalyticsScreenState extends State<TechAnalyticsScreen> {
       resolutionRate: resolutionRate,
       checklistFraction: avgChecklist,
       ticketsWithChecklist: ticketsWithChecklist,
-      avgResolution: avgResolution,
       areaCounts: areas,
     );
   }
@@ -218,9 +171,6 @@ class TechAnalyticsContent extends StatelessWidget {
   final double checklistFraction;
   final int ticketsWithChecklist;
 
-  /// Null when no resolved ticket has a usable report time.
-  final Duration? avgResolution;
-
   /// Tickets per area, highest first, at most six entries.
   final List<MapEntry<String, int>> areaCounts;
 
@@ -232,7 +182,6 @@ class TechAnalyticsContent extends StatelessWidget {
     required this.resolutionRate,
     required this.checklistFraction,
     required this.ticketsWithChecklist,
-    required this.avgResolution,
     required this.areaCounts,
   });
 
@@ -307,8 +256,6 @@ class TechAnalyticsContent extends StatelessWidget {
           const SizedBox(height: AppSpacing.s4),
           _buildChecklistCard(),
           const SizedBox(height: AppSpacing.s4),
-          _buildResolutionTimeCard(),
-          const SizedBox(height: AppSpacing.s4),
           _AreaCard(counts: areaCounts),
         ],
       ),
@@ -370,53 +317,6 @@ class TechAnalyticsContent extends StatelessWidget {
               style: AppText.caption.copyWith(color: AppColors.inkMuted),
             ),
           ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildResolutionTimeCard() {
-    final hasData = avgResolution != null;
-
-    return _Card(
-      child: Row(
-        children: [
-          ExcludeSemantics(
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(
-                color: AppColors.primaryTint,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.timer_outlined, color: AppColors.primary),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.s3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Avg. Resolution Time',
-                  style: AppText.body.copyWith(color: AppColors.inkMuted),
-                ),
-                Text(
-                  hasData ? formatDuration(avgResolution!) : '–',
-                  style: AppText.title.copyWith(
-                    color: AppColors.ink,
-                    fontSize: 24,
-                  ),
-                ),
-                Text(
-                  hasData
-                      ? 'from ticket created to report submitted'
-                      : 'No resolved tickets yet',
-                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
