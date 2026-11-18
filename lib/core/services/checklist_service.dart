@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'; // kDebugMode, debugPrint
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '/config/app_constants.dart';
 import '../../utils/gemini_retry.dart';
+import 'subcategory_detector.dart';
 
 /// TEMP-DEBUG [CHECKLIST] output: the text sent to Gemini and what comes back.
 /// Printed only in debug builds, in pieces so long responses are not cut off.
@@ -21,246 +22,31 @@ class ChecklistService {
       apiKey: AppConstants.geminiApiKey,
     );
   }
-  // Short terms (4 chars or fewer) match whole words; longer terms use contains
-  bool _has(String text, List<String> terms) {
-    for (final t in terms) {
-      if (t.length <= 4) {
-        if (RegExp('\\b${RegExp.escape(t)}(s|ed|ing|ly)?\\b').hasMatch(text)) {
-          return true;
-        }
-      } else if (text.contains(t)) {
-        return true;
-      }
-    }
-    return false;
-  }
 
+  /// The issue type of the ticket, found by [SubcategoryDetector] (weighted
+  /// keywords; the category is only a hint). `general` when nothing matched;
+  /// the knowledge base then uses its general entry.
   String _detectSubcategory(String category, String title, String description) {
-    final text = '$title $description'.toLowerCase();
+    final result = SubcategoryDetector.detect(
+      category: category,
+      title: title,
+      description: description,
+    );
 
-    // Pass 1: distinctive service keywords, matched regardless of the
-    // category Gemini chose. Gemini often files TV/phone/DNS issues under
-    // "Network", so we don't let the category block these.
-    if (_has(text, [
-      'onu password',
-      'auth led',
-      'auth light',
-      'not authenticated',
-    ])) {
-      return 'onu_auth_failure';
+    // TEMP-DEBUG [CHECKLIST] start
+    _dbg(
+      '[CHECKLIST] subcategory=${result.subcategory} '
+      'confidence=${result.confidence} score=${result.score} '
+      'matched=${result.matchedTerms}',
+    );
+    if (result.subcategory == 'general') {
+      _dbg(
+        '[CHECKLIST] USING FALLBACK subcategory general (no keyword matched)',
+      );
     }
+    // TEMP-DEBUG [CHECKLIST] end
 
-    if (_has(text, [
-      'voip',
-      'telephone',
-      'landline',
-      'dial tone',
-      'tel1',
-      'tel2',
-      'home phone',
-      'phone line',
-      'voice',
-    ])) {
-      return 'voip_issue';
-    }
-
-    if (_has(text, [
-      'not turning on',
-      'no power',
-      'not powering',
-      'power led',
-      'power adapter',
-    ])) {
-      return 'ont_failure';
-    }
-
-    final powerFault = _has(text, [
-      'not turning on',
-      'no power',
-      'not powering',
-      'power led',
-      'power adapter',
-    ]);
-
-    if (!powerFault &&
-        _has(text, [
-          'iptv',
-          'hypptv',
-          'vlan',
-          'tv box',
-          'tv channel',
-          'set top box',
-          'set-top',
-        ])) {
-      return 'vlan_config';
-    }
-
-    if (_has(text, ['dns', 'website'])) {
-      return 'dns_issue';
-    }
-
-    if (_has(text, ['pppoe'])) {
-      return 'pppoe_auth';
-    }
-
-    // Pass 2: category-specific rules (your existing switch, unchanged)
-
-    switch (category.toLowerCase()) {
-      case 'network':
-        if (_has(text, [
-          'auth led',
-          'auth light',
-          'not authenticated',
-          'onu password',
-        ]))
-          return 'onu_auth_failure';
-
-        if (_has(text, [
-          'los',
-          'fiber',
-          'fibre',
-          'no internet',
-          'red light',
-          'no connection',
-          'signal loss',
-          'completely down',
-          'total outage',
-          'link led',
-          'no signal',
-        ]))
-          return 'fiber_loss';
-
-        if (_has(text, [
-          'wifi',
-          'wi-fi',
-          'wireless',
-          'weak signal',
-          'cannot connect',
-          'no wifi',
-        ]))
-          return 'wifi_issue';
-
-        if (_has(text, [
-          'slow',
-          'slower',
-          'speed',
-          'buffering',
-          'mbps',
-          'lagging',
-          'low speed',
-        ]))
-          return 'speed_degradation';
-
-        if (_has(text, [
-          'disconnect',
-          'dropping',
-          'unstable',
-          'intermittent',
-          'keeps cutting',
-          'on and off',
-          'random',
-        ]))
-          return 'intermittent';
-
-        _dbg(
-          '[CHECKLIST] USING FALLBACK default subcategory fiber_loss (no network keyword matched)',
-        ); // TEMP-DEBUG [CHECKLIST]
-        return 'fiber_loss'; // default network
-
-      case 'hardware':
-        if (_has(text, [
-          'ont',
-          'onu',
-          'no light',
-          'no power',
-          'power led',
-          'power adapter',
-          'dead',
-          'not turning on',
-        ]))
-          return 'ont_failure';
-
-        if (_has(text, [
-          'router',
-          'lan',
-          'ethernet',
-          'admin page',
-          'cannot access',
-        ]))
-          return 'router_failure';
-
-        if (_has(text, [
-          'cable',
-          'port',
-          'loose',
-          'damaged',
-          'broken',
-          'connector',
-          'patch cord',
-          'bent',
-        ]))
-          return 'cable_damage';
-
-        _dbg(
-          '[CHECKLIST] USING FALLBACK default subcategory ont_failure (no hardware keyword matched)',
-        ); // TEMP-DEBUG [CHECKLIST]
-        return 'ont_failure'; // default hardware
-
-      case 'software':
-        if (_has(text, [
-          'voip',
-          'telephone',
-          'landline',
-          'dial tone',
-          'tel1',
-          'tel2',
-          'home phone',
-          'voice',
-        ]))
-          return 'voip_issue';
-
-        if (_has(text, [
-          'password',
-          'pppoe',
-          'authentication',
-          'login',
-          'credential',
-          'username',
-        ]))
-          return 'pppoe_auth';
-
-        if (_has(text, [
-          'vlan',
-          'iptv',
-          'hypptv',
-          'tv',
-          'setup',
-          'configuration',
-          'misconfigured',
-        ]))
-          return 'vlan_config';
-
-        if (_has(text, [
-          'dns',
-          'website',
-          'browsing',
-          'cannot open',
-          'ping',
-          'domain',
-        ]))
-          return 'dns_issue';
-
-        _dbg(
-          '[CHECKLIST] USING FALLBACK default subcategory pppoe_auth (no software keyword matched)',
-        ); // TEMP-DEBUG [CHECKLIST]
-        return 'pppoe_auth'; // default software
-
-      default:
-        _dbg(
-          '[CHECKLIST] USING FALLBACK subcategory general (category "$category" is not network/hardware/software)',
-        ); // TEMP-DEBUG [CHECKLIST]
-        return 'general';
-    }
+    return result.subcategory;
   }
 
   // --- Step 5: Knowledge Base Retrieval by Subcategory ---
