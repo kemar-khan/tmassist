@@ -191,6 +191,13 @@ class SubcategoryDetector {
       _Term('link led', 2),
       _Term('internet is dead', 2),
       _Term('internet dead', 2),
+      // Whole-word, so "internet download" does not match "internet down".
+      _Term('internet down', 2, wholeWord: true),
+      _Term('internet is down', 2, wholeWord: true),
+      _Term('internet not working', 2, wholeWord: true),
+      _Term('internet outage', 2, wholeWord: true),
+      _Term('internet mati', 2, wholeWord: true),
+      _Term('internet tak jalan', 2, wholeWord: true),
       _Term('no signal', 1),
       // Malay
       _Term('line putus', 3),

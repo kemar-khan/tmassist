@@ -10,6 +10,7 @@ import '../../widgets/stream_error.dart';
 import '../../core/config/timeouts.dart';
 import '../../utils/slow_hint.dart';
 import '../../widgets/slow_hint_text.dart';
+import '../../utils/subcategory_labels.dart';
 
 class ChecklistScreen extends StatefulWidget {
   final String ticketId;
@@ -180,9 +181,20 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       final draftRef = db.collection('drafts').doc(widget.ticketId);
       final draftSnap = await draftRef.get();
       final batch = db.batch();
+      // The detected issue type is saved with the checklist, for the "Based
+      // on" label and for finding similar cases later.
+      final detection = _checklistService.lastDetection;
       batch.update(db.collection('tickets').doc(widget.ticketId), {
         'checklistItems': finalItems,
         'checklistDone': donelist,
+        if (detection != null) ...{
+          'detectedSubcategory': detection.subcategory,
+          'detectedConfidence': detection.confidence,
+        },
+        // Tells the screen to show the "AI unavailable" note.
+        'checklistSource': _checklistService.lastUsedFallback
+            ? 'knowledge_base'
+            : 'ai',
         'updatedAt': FieldValue.serverTimestamp(),
       });
       if (draftSnap.exists) {
@@ -358,6 +370,14 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           done: _overlay.apply(checklistDone),
           isGenerating: _isGenerating,
           showSlowHint: _showSlowHint,
+          detectedSubcategory: (data['detectedSubcategory'] ?? '').toString(),
+          detectedConfidence: (data['detectedConfidence'] ?? '').toString(),
+          fromKnowledgeBase: data['checklistSource'] == 'knowledge_base',
+          safetyNotes: (data['detectedSubcategory'] ?? '').toString().isEmpty
+              ? const []
+              : ChecklistService.safetyNotesFor(
+                  data['detectedSubcategory'].toString(),
+                ),
           onToggle: (index, value) => _handleToggle(index),
           onGenerate: () => _handleGenerate(data),
           onReady: _openReport,
@@ -384,6 +404,19 @@ class ChecklistView extends StatelessWidget {
   /// True when generation has been running for a while: a small "Still
   /// working…" line shows under the generate button.
   final bool showSlowHint;
+
+  /// What the checklist was based on (saved when it was generated); both are
+  /// empty for older tickets, which show no "Based on" label.
+  final String detectedSubcategory;
+  final String detectedConfidence;
+
+  /// True when the checklist was built from the knowledge base because the AI
+  /// was unavailable; a note says so.
+  final bool fromKnowledgeBase;
+
+  /// The safety notes of the detected knowledge-base entry (none for older
+  /// tickets), shown exactly as written there.
+  final List<String> safetyNotes;
   final void Function(int index, bool value) onToggle;
   final VoidCallback onGenerate;
 
@@ -402,6 +435,10 @@ class ChecklistView extends StatelessWidget {
     required this.done,
     required this.isGenerating,
     this.showSlowHint = false,
+    this.detectedSubcategory = '',
+    this.detectedConfidence = '',
+    this.fromKnowledgeBase = false,
+    this.safetyNotes = const [],
     required this.onToggle,
     required this.onGenerate,
     required this.onReady,
@@ -440,6 +477,22 @@ class ChecklistView extends StatelessWidget {
                 onGenerate: onGenerate,
               )
             else ...[
+              if (basedOnLine(detectedSubcategory, detectedConfidence)
+                  case final basedOn?) ...[
+                _BasedOnLabel(text: basedOn),
+                const SizedBox(height: AppSpacing.s4),
+                if (fromKnowledgeBase) ...[
+                  const _BasedOnLabel(
+                    text:
+                        'Generated from the TM knowledge base (AI unavailable)',
+                  ),
+                  const SizedBox(height: AppSpacing.s4),
+                ],
+                if (safetyNotes.isNotEmpty) ...[
+                  _SafetyNotesBox(notes: safetyNotes),
+                  const SizedBox(height: AppSpacing.s4),
+                ],
+              ],
               for (var i = 0; i < total; i++) ...[
                 _ChecklistItemCard(
                   title: items[i]['title']?.toString() ?? '',
@@ -794,6 +847,88 @@ class _ChecklistItemCard extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small note above the checklist items saying what it was based on.
+class _BasedOnLabel extends StatelessWidget {
+  final String text;
+
+  const _BasedOnLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.s3),
+      decoration: BoxDecoration(
+        color: AppColors.primaryTint,
+        borderRadius: AppRadius.brMd,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ExcludeSemantics(
+            child: Icon(Icons.info_outline, size: 20, color: AppColors.primary),
+          ),
+          const SizedBox(width: AppSpacing.s3),
+          Expanded(
+            child: Text(
+              text,
+              style: AppText.body.copyWith(color: AppColors.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The safety notes of the knowledge-base entry, straight from its text.
+class _SafetyNotesBox extends StatelessWidget {
+  final List<String> notes;
+
+  const _SafetyNotesBox({required this.notes});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.s3),
+      decoration: BoxDecoration(
+        color: AppColors.accentTint,
+        borderRadius: AppRadius.brMd,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ExcludeSemantics(
+            child: Icon(
+              Icons.warning_amber_rounded,
+              size: 20,
+              color: AppColors.accentStrong,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Safety Notes',
+                  style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+                ),
+                for (final note in notes) ...[
+                  const SizedBox(height: AppSpacing.s1),
+                  Text(
+                    '\u2022 $note',
+                    style: AppText.body.copyWith(color: AppColors.ink),
+                  ),
+                ],
+              ],
             ),
           ),
         ],

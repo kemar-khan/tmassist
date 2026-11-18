@@ -4,6 +4,10 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import '/config/app_constants.dart';
 import '../../utils/gemini_retry.dart';
 import 'subcategory_detector.dart';
+import '../../utils/similar_cases.dart';
+import '../../utils/checklist_kb.dart';
+import '../../utils/checklist_parse.dart';
+import '../config/timeouts.dart';
 
 /// TEMP-DEBUG [CHECKLIST] output: the text sent to Gemini and what comes back.
 /// Printed only in debug builds, in pieces so long responses are not cut off.
@@ -20,8 +24,30 @@ class ChecklistService {
     _model = GenerativeModel(
       model: 'gemini-2.5-flash',
       apiKey: AppConstants.geminiApiKey,
+      generationConfig: GenerationConfig(
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+      ),
     );
   }
+
+  /// True when the latest [generateChecklist] call could not use the AI and
+  /// built the checklist from the knowledge base instead.
+  bool lastUsedFallback = false;
+
+  /// The safety notes of the knowledge-base entry of [subcategory], exactly as
+  /// written there (no AI). Empty when the entry has none.
+  static List<String> safetyNotesFor(String subcategory) =>
+      safetyNotesFromKb(_getKnowledgeBase(subcategory));
+
+  /// The no-AI checklist for [subcategory]: one item per numbered Field
+  /// Procedure of its knowledge-base entry (see [fallbackChecklistFromKb]).
+  static List<Map<String, String>> fallbackChecklistFor(String subcategory) =>
+      fallbackChecklistFromKb(_getKnowledgeBase(subcategory));
+
+  /// The detection of the latest [generateChecklist] call, so the screen can
+  /// save it on the ticket (`detectedSubcategory`, `detectedConfidence`).
+  SubcategoryResult? lastDetection;
 
   /// The issue type of the ticket, found by [SubcategoryDetector] (weighted
   /// keywords; the category is only a hint). `general` when nothing matched;
@@ -32,6 +58,8 @@ class ChecklistService {
       title: title,
       description: description,
     );
+
+    lastDetection = result;
 
     // TEMP-DEBUG [CHECKLIST] start
     _dbg(
@@ -50,7 +78,7 @@ class ChecklistService {
   }
 
   // --- Step 5: Knowledge Base Retrieval by Subcategory ---
-  String _getKnowledgeBase(String subcategory) {
+  static String _getKnowledgeBase(String subcategory) {
     switch (subcategory) {
       // NETWORK SUBCATEGORIES
       case 'fiber_loss':
@@ -466,77 +494,94 @@ Safety Notes:
   }
 
   // --- Fetch Similar Past Tickets WITH Resolution Notes ---
-  Future<String> _getSimilarTicketsContext(
+  /// Past cases of the SAME subcategory only (at most 3), or null when none
+  /// qualify, in which case the prompt has no past-cases section at all.
+  Future<String?> _getSimilarTicketsContext(
     String category,
     String subcategory,
     String currentTicketId,
   ) async {
     try {
+      // Same query as before (category + status, so no new index); the
+      // subcategory filter is applied here in Dart.
       final ticketSnapshot = await _firestore
           .collection('tickets')
           .where('category', isEqualTo: category)
           .where('status', whereIn: ['RESOLVED', 'CLOSED'])
-          .limit(5)
+          .limit(20)
           .get();
 
-      if (ticketSnapshot.docs.isEmpty) {
+      // Only tickets saved with this subcategory can qualify, so only their
+      // reports are read.
+      final docs = [
+        for (final d in ticketSnapshot.docs)
+          if (d.id != currentTicketId &&
+              d.data()['detectedSubcategory']?.toString() == subcategory)
+            d,
+      ];
+
+      if (docs.isEmpty) {
         _dbg(
-          '[CHECKLIST] USING FALLBACK (similar-tickets context: no RESOLVED tickets for category $category)',
+          '[CHECKLIST] NO past cases section (no RESOLVED/CLOSED ticket of category $category with subcategory $subcategory)',
         ); // TEMP-DEBUG [CHECKLIST]
-        return 'No similar resolved tickets found for this category.';
+        return null;
+      }
+
+      final reports = await Future.wait([
+        for (final d in docs) _firestore.collection('reports').doc(d.id).get(),
+      ]);
+
+      final data = <String, Map<String, dynamic>>{};
+      final reportOf = <String, Map<String, dynamic>>{};
+      final candidates = <SimilarCandidate>[];
+      for (var i = 0; i < docs.length; i++) {
+        final doc = docs[i];
+        final report = reports[i];
+        final reportData = report.exists
+            ? (report.data() ?? <String, dynamic>{})
+            : <String, dynamic>{};
+        data[doc.id] = doc.data();
+        reportOf[doc.id] = reportData;
+        candidates.add(
+          SimilarCandidate(
+            id: doc.id,
+            subcategory: doc.data()['detectedSubcategory']?.toString(),
+            // Only the human-written technician notes are used.
+            notes: report.exists
+                ? reportData['technicianNotes']?.toString()
+                : null,
+          ),
+        );
+      }
+
+      final selection = chooseSimilarCases(
+        candidates,
+        currentSubcategory: subcategory,
+        currentTicketId: currentTicketId,
+      );
+
+      if (selection.chosen.isEmpty) {
+        _dbg(
+          '[CHECKLIST] NO past cases section (tickets with subcategory $subcategory had no meaningful technician notes)',
+        ); // TEMP-DEBUG [CHECKLIST]
+        return null;
       }
 
       final buffer = StringBuffer();
       buffer.writeln(
-        'Past resolved "$category" tickets (subcategory: $subcategory):',
+        'Past resolved "$category" tickets (same subcategory: $subcategory):',
       );
       buffer.writeln();
 
-      int count = 0;
-      for (final ticketDoc in ticketSnapshot.docs) {
-        if (ticketDoc.id == currentTicketId) continue;
-        if (count >= 3) break;
-
-        final ticketData = ticketDoc.data();
-        final title = ticketData['title']?.toString() ?? '';
-        final description = ticketData['description']?.toString() ?? '';
-
-        final reportDoc = await _firestore
-            .collection('reports')
-            .doc(ticketDoc.id)
-            .get();
-
-        if (!reportDoc.exists) continue;
-
-        final reportData = reportDoc.data() ?? {};
-        final rootCause = reportData['rootCause']?.toString() ?? '';
-        final stepsTaken = reportData['stepsTaken']?.toString() ?? '';
-        final resolutionSummary =
-            reportData['resolutionSummary']?.toString() ?? '';
-        final technicianNotes = reportData['technicianNotes']?.toString() ?? '';
-
-        if (rootCause.isEmpty && stepsTaken.isEmpty) continue;
-
+      var count = 0;
+      for (final candidate in selection.chosen) {
+        final notes = (reportOf[candidate.id]?['technicianNotes'] ?? '')
+            .toString()
+            .trim();
         count++;
         buffer.writeln('--- Past Case $count ---');
-        if (title.isNotEmpty) buffer.writeln('Issue: $title');
-        if (description.isNotEmpty) buffer.writeln('Description: $description');
-        if (rootCause.isNotEmpty) buffer.writeln('Root Cause: $rootCause');
-        if (stepsTaken.isNotEmpty) buffer.writeln('Steps Taken: $stepsTaken');
-        if (resolutionSummary.isNotEmpty) {
-          buffer.writeln('How It Was Resolved: $resolutionSummary');
-        }
-        if (technicianNotes.isNotEmpty) {
-          buffer.writeln('Technician Notes: $technicianNotes');
-        }
+        buffer.writeln('Technician note: $notes');
         buffer.writeln();
-      }
-
-      if (count == 0) {
-        _dbg(
-          '[CHECKLIST] USING FALLBACK (similar-tickets context: resolved tickets found but none had a report with rootCause/stepsTaken)',
-        ); // TEMP-DEBUG [CHECKLIST]
-        return 'No similar resolved tickets with resolution details found.';
       }
 
       return buffer.toString();
@@ -545,11 +590,10 @@ Safety Notes:
       _dbg('[CHECKLIST] ERROR in _getSimilarTicketsContext: $e');
       _dbg('[CHECKLIST] STACK $st');
       _dbg(
-        '[CHECKLIST] ERROR ... returning fallback context string "Could not retrieve similar tickets."',
+        '[CHECKLIST] ERROR ... leaving the past cases section out of the prompt',
       );
-      _dbg('[CHECKLIST] USING FALLBACK (similar-tickets context)');
       // TEMP-DEBUG [CHECKLIST] end
-      return 'Could not retrieve similar tickets.';
+      return null;
     }
   }
 
@@ -590,6 +634,12 @@ ${existingItems.map((e) => '- ${e['title']}').join('\n')}
 '''
         : '';
 
+    // The past cases section exists only when same-subcategory cases do.
+    final pastCasesSection = similarTickets == null
+        ? ''
+        : '=== PAST RESOLVED CASES (extra detail only) ===\n'
+              '$similarTickets\n';
+
     // Step 6: Construct prompt
     final prompt =
         '''
@@ -599,10 +649,7 @@ Your job is to generate a specific, actionable troubleshooting checklist based o
 === TM KNOWLEDGE BASE — "$category" / "$subcategory" ISSUE ===
 $knowledgeBase
 
-=== PAST RESOLVED CASES (learn from these resolutions) ===
-$similarTickets
-
-=== CURRENT TICKET TO SOLVE ===
+$pastCasesSection=== CURRENT TICKET TO SOLVE ===
 Category: $category
 Detected Issue Type: $subcategory
 Issue Title: $title
@@ -613,7 +660,7 @@ $existingContext
 === YOUR TASK ===
 Generate a checklist tailored specifically to THIS ticket.
 Use the knowledge base for correct TM procedures, tools, and acceptable value ranges.
-Use the past resolved cases to inform likely root causes and proven fix steps.
+If past cases are given, use them only to add detail. They must never add steps, tools, systems or values that are not in the knowledge base. If a past case conflicts with the knowledge base, follow the knowledge base.
 
 Each checklist item must have:
 - title: short action step (max 8 words)
@@ -623,12 +670,16 @@ Each checklist item must have:
 
 Rules:
 - Generate between 5 to 8 checklist items
-- Order from highest to lowest priority
+- Keep the items in the order of the knowledge base's Field Procedures. Assign priority so it never rises down the list (all High items first, then Medium, then Low); physical and link checks come before any configuration change.
+- Use abbreviations exactly as written in the knowledge base (ONU, PG, STB and so on). Do not expand them or invent new abbreviations.
 - High = directly targets most likely root cause for this specific issue type
 - Medium = important verification or diagnostic step
 - Low = good practice check, less likely root cause
 - Reference specific TM values only when they appear in the knowledge base above (e.g. VLAN 400/500/600, ONU sensitivity -28 dBm, throughput at least 90% of plan). Do not invent values.
 - Do NOT generate generic steps that could apply to any IT issue
+- Every checklist item must be based on a procedure in the knowledge base. Do not add steps from outside it.
+- Follow the order of the knowledge base's Field Procedures (physical and link checks before any configuration change). Skip only steps that do not apply to this ticket.
+- If the knowledge base has Safety Notes, include each relevant note in the detail of the step it applies to (for example the step that changes settings), or as a final item.
 
 Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
 [
@@ -641,6 +692,8 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
 ]
 ''';
 
+    lastUsedFallback = false;
+
     try {
       // TEMP-DEBUG [CHECKLIST] start
       _dbg('[CHECKLIST] >>> PROMPT');
@@ -652,10 +705,12 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
       final content = [Content.text(prompt)];
       final stopwatch = Stopwatch()..start();
       // One retry after 2 s on 503 / 429 / network errors; never on a timeout.
+      // The whole request, retry included, is limited so that a slow Gemini
+      // still leaves time for the no-AI fallback below.
       final response = await withGeminiRetry(
         () => _model.generateContent(content),
         label: 'checklist',
-      );
+      ).timeout(Timeouts.checklistGemini);
       stopwatch.stop();
       _dbg(
         'DEBUG [Checklist] Gemini response time: ${stopwatch.elapsedMilliseconds}ms (${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)',
@@ -671,78 +726,39 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
       _dbg('[CHECKLIST] <<< END RESPONSE');
       // TEMP-DEBUG [CHECKLIST] end
 
-      final cleaned = responseText
-          .replaceAll('```json', '')
-          .replaceAll('```', '')
-          .trim();
-
-      final start = cleaned.indexOf('[');
-      final end = cleaned.lastIndexOf(']');
-
-      if (start == -1 || end == -1) {
-        throw Exception('No valid JSON array found in response');
-      }
-
-      final jsonString = cleaned.substring(start, end + 1);
-      final List<dynamic> parsed = _parseJsonArray(jsonString);
+      // jsonDecode first, the old regex reader as the backup.
+      final items = parseChecklistResponse(responseText);
 
       // TEMP-DEBUG [CHECKLIST] start
-      _dbg('[CHECKLIST] parsed ${parsed.length} item(s)');
-      if (parsed.isEmpty) {
+      _dbg('[CHECKLIST] parsed ${items.length} item(s)');
+      if (items.isEmpty) {
         _dbg(
-          '[CHECKLIST] WARNING parser matched 0 items; the checklist returned is EMPTY (no fallback list exists)',
+          '[CHECKLIST] WARNING parser matched 0 items; using the no-AI fallback checklist',
         );
       }
       // TEMP-DEBUG [CHECKLIST] end
 
-      return parsed.map((item) {
-        final map = item is Map<String, dynamic>
-            ? item
-            : Map<String, dynamic>.from(
-                (item as Map).map((k, v) => MapEntry(k.toString(), v)),
-              );
-        return {
-          'title': map['title']?.toString() ?? '',
-          'detail': map['detail']?.toString() ?? '',
-          'priority': map['priority']?.toString() ?? 'Medium',
-          'estimatedTime': map['estimatedTime']?.toString() ?? '10 mins',
-        };
-      }).toList();
+      if (items.isEmpty) {
+        throw Exception('No checklist items in the response');
+      }
+      return items;
     } catch (e, st) {
       // TEMP-DEBUG [CHECKLIST] start
       _dbg('[CHECKLIST] ERROR in generateChecklist: $e');
       _dbg('[CHECKLIST] STACK $st');
-      _dbg(
-        '[CHECKLIST] ERROR ... no fallback checklist exists; rethrowing "Checklist generation failed"',
-      );
       // TEMP-DEBUG [CHECKLIST] end
+
+      // Gemini failed (after its retry), timed out or gave nothing usable:
+      // build the checklist from the knowledge base, without the AI.
+      final fallback = fallbackChecklistFromKb(knowledgeBase);
+      if (fallback.isNotEmpty) {
+        lastUsedFallback = true;
+        _dbg(
+          '[CHECKLIST] USING NO-AI FALLBACK checklist (${fallback.length} items from the knowledge base)',
+        ); // TEMP-DEBUG [CHECKLIST]
+        return fallback;
+      }
       throw Exception('Checklist generation failed: $e');
     }
-  }
-
-  List<dynamic> _parseJsonArray(String json) {
-    final items = <Map<String, dynamic>>[];
-    final pattern = RegExp(
-      r'\{[^{}]*"title"[^{}]*"detail"[^{}]*"priority"[^{}]*"estimatedTime"[^{}]*\}',
-      dotAll: true,
-    );
-
-    for (final match in pattern.allMatches(json)) {
-      final obj = match.group(0) ?? '';
-      items.add({
-        'title': _extractField(obj, 'title'),
-        'detail': _extractField(obj, 'detail'),
-        'priority': _extractField(obj, 'priority'),
-        'estimatedTime': _extractField(obj, 'estimatedTime'),
-      });
-    }
-
-    return items;
-  }
-
-  String _extractField(String json, String field) {
-    final pattern = RegExp('"$field"\\s*:\\s*"(.*?)"', dotAll: true);
-    final match = pattern.firstMatch(json);
-    return match?.group(1)?.trim() ?? '';
   }
 }

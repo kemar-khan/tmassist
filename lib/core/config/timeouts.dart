@@ -10,6 +10,11 @@ class Timeouts {
   /// Gemini: checklist generation on the technician Checklist screen.
   static const checklistGeneration = Duration(seconds: 45);
 
+  /// The Gemini request inside checklist generation, retry included. It is
+  /// shorter than [checklistGeneration], so when Gemini is too slow there is
+  /// still time to build the no-AI checklist from the knowledge base.
+  static const checklistGemini = Duration(seconds: 35);
+
   /// Cloudinary uploads (customer attachment and technician proof photo).
   static const fileUpload = Duration(seconds: 45);
 

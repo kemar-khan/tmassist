@@ -282,6 +282,39 @@ void main() {
       );
     });
 
+    test('internet down phrases -> fiber_loss', () {
+      expect(run('Internet down', 'Network').subcategory, 'fiber_loss');
+      expect(
+        run('Internet is down since this morning', 'Other').subcategory,
+        'fiber_loss',
+      );
+      expect(run('Internet not working', 'Network').subcategory, 'fiber_loss');
+      expect(
+        run('internet outage in my area', 'Other').subcategory,
+        'fiber_loss',
+      );
+      expect(run('internet mati', 'Other').subcategory, 'fiber_loss');
+      expect(run('internet tak jalan', 'Other').subcategory, 'fiber_loss');
+    });
+
+    test('plain "down" is not a fiber_loss term', () {
+      final tv = run('TV is down', 'Software');
+      expect(tv.subcategory, isNot('fiber_loss'));
+      expect(['general', 'vlan_config'], contains(tv.subcategory));
+      expect(run('the server is down', 'Network').subcategory, 'general');
+    });
+
+    test('"down" inside download does not match', () {
+      expect(
+        run('download is slow', 'Network').subcategory,
+        'speed_degradation',
+      );
+      // Not even as part of "internet download".
+      final r = run('internet download is slow', 'Other');
+      expect(r.subcategory, 'speed_degradation');
+      expect(r.matchedTerms, isNot(contains('internet down')));
+    });
+
     test('the tie priority list has every subcategory once', () {
       expect(SubcategoryDetector.tiePriority.length, 12);
       expect(SubcategoryDetector.tiePriority.toSet().length, 12);
