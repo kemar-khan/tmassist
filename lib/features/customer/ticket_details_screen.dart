@@ -92,6 +92,9 @@ class TicketDetailsScreen extends StatelessWidget {
               .toString();
           final category = (data['category'] ?? 'Unknown').toString();
           final address = (data['address'] ?? '-').toString();
+          // The area the customer picked; "-" when missing or empty.
+          final rawArea = (data['area'] ?? '').toString().trim();
+          final area = rawArea.isEmpty ? '-' : rawArea;
           final contactNumber = (data['contactNumber'] ?? '-').toString();
           final customerName = (data['customerName'] ?? '-').toString();
           final customerEmail = (data['customerEmail'] ?? '-').toString();
@@ -123,6 +126,7 @@ class TicketDetailsScreen extends StatelessWidget {
                     description: description,
                     category: category,
                     address: address,
+                    area: area,
                     createdAt: createdAt,
                   ),
                   const SizedBox(height: AppSpacing.s4),
@@ -206,6 +210,7 @@ class TicketDetailsScreen extends StatelessWidget {
     required String description,
     required String category,
     required String address,
+    required String area,
     required Timestamp? createdAt,
   }) {
     return SectionCard(
@@ -221,6 +226,7 @@ class TicketDetailsScreen extends StatelessWidget {
             showDivider: true,
           ),
           InfoRow(label: 'Address', value: address, showDivider: true),
+          InfoRow(label: 'Area', value: area, showDivider: true),
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.s3),
             child: Column(

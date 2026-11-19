@@ -382,7 +382,16 @@ class _ReportScreenState extends State<ReportScreen>
         kind: SnackKind.success,
       );
 
-      Navigator.pop(context);
+      // Show the submitted (view-only) report, with Job Details underneath, not
+      // the checklist this screen was opened from. With no Job Details route in
+      // the stack (the app-recovery path) it stops at the first route, the main
+      // shell, which is never removed.
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/tech/report',
+        (route) => route.settings.name == '/tech/ticket' || route.isFirst,
+        arguments: widget.ticketId,
+      );
     } catch (_) {
       if (mounted) {
         showAppSnack(

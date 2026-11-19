@@ -150,6 +150,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           description: (data['description'] ?? '').toString(),
           category: (data['category'] ?? '').toString(),
           address: (data['address'] ?? '').toString(),
+          // The area the customer picked; "-" when missing or empty.
+          area: (data['area'] ?? '').toString().trim().isEmpty
+              ? '-'
+              : (data['area'] ?? '').toString().trim(),
           customerName: (data['customerName'] ?? '').toString(),
           attachmentUrl: (data['attachmentUrl'] ?? '').toString(),
           createdAt: time(data['createdAt']),
@@ -195,6 +199,9 @@ class TechJobDetailView extends StatelessWidget {
   /// Empty when the ticket has none; the matching row is then hidden.
   final String category;
   final String address;
+
+  /// The ticket's area, or "-" when it has none.
+  final String area;
   final String customerName;
   final String attachmentUrl;
   final DateTime? createdAt;
@@ -226,6 +233,7 @@ class TechJobDetailView extends StatelessWidget {
     required this.description,
     required this.category,
     required this.address,
+    this.area = '-',
     required this.customerName,
     required this.attachmentUrl,
     required this.createdAt,
@@ -555,6 +563,7 @@ class TechJobDetailView extends StatelessWidget {
         ),
       if (address.isNotEmpty)
         InfoRow(label: 'Address', value: address, showDivider: true),
+      InfoRow(label: 'Area', value: area, showDivider: true),
     ];
 
     return SectionCard(

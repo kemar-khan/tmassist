@@ -241,6 +241,10 @@ class _SupervisorTicketDetailScreenState
               description: (data['description'] ?? '').toString(),
               category: (data['category'] ?? '-').toString(),
               address: (data['address'] ?? '-').toString(),
+              // The area the customer picked; "-" when missing or empty.
+              area: (data['area'] ?? '').toString().trim().isEmpty
+                  ? '-'
+                  : (data['area'] ?? '').toString().trim(),
               customerName: (data['customerName'] ?? '-').toString(),
               technicianName: (data['technicianName'] ?? '').toString(),
               technicianId: (data['technicianId'] ?? '').toString(),
@@ -285,6 +289,9 @@ class SupervisorTicketDetailView extends StatelessWidget {
   final String description;
   final String category;
   final String address;
+
+  /// The ticket's area, or "-" when it has none.
+  final String area;
   final String customerName;
   final String technicianName;
   final String technicianId;
@@ -322,6 +329,7 @@ class SupervisorTicketDetailView extends StatelessWidget {
     required this.description,
     required this.category,
     required this.address,
+    this.area = '-',
     required this.customerName,
     required this.technicianName,
     required this.technicianId,
@@ -526,6 +534,7 @@ class SupervisorTicketDetailView extends StatelessWidget {
             showDivider: true,
           ),
           InfoRow(label: 'Address', value: address, showDivider: true),
+          InfoRow(label: 'Area', value: area, showDivider: true),
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.s3),
             child: Column(
