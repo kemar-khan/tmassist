@@ -121,6 +121,9 @@ class SubcategoryDetector {
       _Term('tidak menyala', 3),
       _Term('tiada kuasa', 3),
       _Term('adapter rosak', 3),
+      _Term('semua lampu padam', 3),
+      _Term('lampu padam', 3),
+      _Term('all lights off', 3),
     ],
     'vlan_config': [
       _Term('vlan', 3),
@@ -149,6 +152,9 @@ class SubcategoryDetector {
       // Malay
       _Term('tak boleh buka website', 2),
       _Term('laman web', 1),
+      _Term('some sites', 2),
+      _Term('certain sites', 2),
+      _Term('some apps', 2),
     ],
     'pppoe_auth': [
       _Term('pppoe', 3),
@@ -177,11 +183,14 @@ class SubcategoryDetector {
       _Term('terputus', 2),
       _Term('selalu putus', 2),
       _Term('tak stabil', 2),
+      _Term('putus sambung', 2),
+      _Term('kejap ada kejap tak', 3),
+      _Term('sambung putus', 2),
     ],
     'fiber_loss': [
       _Term('los', 2),
-      _Term('fiber', 2),
-      _Term('fibre', 2),
+      _Term('fiber', 1),
+      _Term('fibre', 1),
       _Term('no internet', 2),
       _Term('red light', 2),
       _Term('no connection', 2),
@@ -251,6 +260,8 @@ class SubcategoryDetector {
       _Term('wifi lemah', 2),
       _Term('isyarat lemah', 2),
       _Term('tak boleh sambung wifi', 2),
+      _Term('tak boleh connect', 2),
+      _Term('tak dapat connect', 2),
     ],
   };
 
@@ -296,6 +307,64 @@ class SubcategoryDetector {
     // subcategory (ont_failure) past the explicit auth term.
     final authOnlyBonus = power.isNotEmpty && authMatched;
 
+    final scored = _scoreAll(text, category, authOnlyBonus);
+
+    if (scored.isEmpty) {
+      return const SubcategoryResult(
+        subcategory: 'general',
+        confidence: 'low',
+        score: 0,
+        matchedTerms: [],
+      );
+    }
+
+    final top = scored.first;
+    final runnerUp = scored.length > 1 ? scored[1] : null;
+    final clear = runnerUp == null || top.score - runnerUp.score >= 1;
+    final confidence = top.score >= 3 && clear ? 'high' : 'medium';
+
+    return SubcategoryResult(
+      subcategory: top.subcategory,
+      confidence: confidence,
+      score: top.score,
+      matchedTerms: top.matched,
+    );
+  }
+
+  /// Every subcategory that has at least one matched term, best first (ties
+  /// in [tiePriority] order), with its score and matched terms. For
+  /// diagnostics: the runner-up is the second entry. [detect] uses the same
+  /// scoring, so the first entry is its answer (a power-fault override aside).
+  static List<SubcategoryResult> rank({
+    required String category,
+    required String title,
+    required String description,
+  }) {
+    final text = '$title $description'.toLowerCase();
+    final power = [
+      for (final t in _powerFaultTerms)
+        if (termMatches(text, t)) t,
+    ];
+    final authMatched = _table['onu_auth_failure']!.any(
+      (t) => termMatches(text, t.text, wholeWord: t.wholeWord),
+    );
+    final scored = _scoreAll(text, category, power.isNotEmpty && authMatched);
+    return [
+      for (final s in scored)
+        SubcategoryResult(
+          subcategory: s.subcategory,
+          confidence: '',
+          score: s.score,
+          matchedTerms: s.matched,
+        ),
+    ];
+  }
+
+  static List<_Scored> _scoreAll(
+    String text,
+    String category,
+    bool authOnlyBonus,
+  ) {
     final hinted =
         _categorySubcategories[category.trim().toLowerCase()] ??
         const <String>{};
@@ -318,15 +387,6 @@ class SubcategoryDetector {
       );
     });
 
-    if (scored.isEmpty) {
-      return const SubcategoryResult(
-        subcategory: 'general',
-        confidence: 'low',
-        score: 0,
-        matchedTerms: [],
-      );
-    }
-
     scored.sort((a, b) {
       final byScore = b.score.compareTo(a.score);
       if (byScore != 0) return byScore;
@@ -334,18 +394,7 @@ class SubcategoryDetector {
           .indexOf(a.subcategory)
           .compareTo(tiePriority.indexOf(b.subcategory));
     });
-
-    final top = scored.first;
-    final runnerUp = scored.length > 1 ? scored[1] : null;
-    final clear = runnerUp == null || top.score - runnerUp.score >= 1;
-    final confidence = top.score >= 3 && clear ? 'high' : 'medium';
-
-    return SubcategoryResult(
-      subcategory: top.subcategory,
-      confidence: confidence,
-      score: top.score,
-      matchedTerms: top.matched,
-    );
+    return scored;
   }
 }
 

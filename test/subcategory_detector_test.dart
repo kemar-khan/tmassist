@@ -315,6 +315,70 @@ void main() {
       expect(r.matchedTerms, isNot(contains('internet down')));
     });
 
+    test('new wifi phrases: tak boleh / tak dapat connect', () {
+      expect(
+        run('wifi tak boleh connect', 'Network').subcategory,
+        'wifi_issue',
+      );
+      expect(
+        run('laptop tak dapat connect ke wifi', 'Other').subcategory,
+        'wifi_issue',
+      );
+    });
+
+    test('new intermittent phrases: putus sambung / sambung putus', () {
+      expect(
+        run('internet putus sambung', 'Network').subcategory,
+        'intermittent',
+      );
+      expect(
+        run('line sambung putus sepanjang hari', 'Other').subcategory,
+        'intermittent',
+      );
+    });
+
+    test('new dns phrases: some / certain sites, some apps', () {
+      expect(run('some sites not opening', 'Network').subcategory, 'dns_issue');
+      expect(
+        run('certain sites will not load', 'Other').subcategory,
+        'dns_issue',
+      );
+      expect(
+        run('some apps will not load', 'Network').subcategory,
+        'dns_issue',
+      );
+      // No app or site names were added as terms.
+      expect(run('Netflix will not load', 'Network').subcategory, 'general');
+    });
+
+    test('lights-off phrases -> ont_failure', () {
+      expect(
+        run('all lights off on the modem', 'Hardware').subcategory,
+        'ont_failure',
+      );
+      expect(run('semua lampu padam', 'Hardware').subcategory, 'ont_failure');
+      expect(run('lampu padam pada modem', 'Other').subcategory, 'ont_failure');
+      // "lampu mati" is deliberately not a term.
+      expect(run('lampu mati', 'Hardware').subcategory, 'general');
+    });
+
+    test('"kejap ada kejap tak" -> intermittent', () {
+      expect(
+        run(
+          'Technician pasang fiber semalam, tapi hari ni internet kejap ada kejap tak',
+          'Network',
+        ).subcategory,
+        'intermittent',
+      );
+    });
+
+    test('internet down with a red light is still fiber_loss', () {
+      expect(
+        run('Internet down, red light on the box', 'Network').subcategory,
+        'fiber_loss',
+      );
+    });
+
     test('the tie priority list has every subcategory once', () {
       expect(SubcategoryDetector.tiePriority.length, 12);
       expect(SubcategoryDetector.tiePriority.toSet().length, 12);
