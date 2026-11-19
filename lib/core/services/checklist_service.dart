@@ -35,6 +35,11 @@ class ChecklistService {
   /// built the checklist from the knowledge base instead.
   bool lastUsedFallback = false;
 
+  /// The whole knowledge-base entry text, for tests.
+  @visibleForTesting
+  static String knowledgeBaseFor(String subcategory) =>
+      _getKnowledgeBase(subcategory);
+
   /// The safety notes of the knowledge-base entry of [subcategory], exactly as
   /// written there (no AI). Empty when the entry has none.
   static List<String> safetyNotesFor(String subcategory) =>
@@ -169,6 +174,8 @@ Field Procedures:
 Safety Notes:
 - Inform customer before changing WiFi SSID or password
 - Always back up router config before making changes
+
+Source: General field practice, discussed with the TM R&D collaborator; not from the TM training deck
 ''';
 
       case 'speed_degradation':
@@ -302,6 +309,8 @@ Field Procedures:
 Safety Notes:
 - Inform customer before factory reset — all custom settings will be lost
 - Document original configuration before making changes
+
+Source: General field practice, discussed with the TM R&D collaborator; not from the TM training deck
 ''';
 
       case 'cable_damage':
@@ -358,7 +367,7 @@ Required Tools:
 Field Procedures:
 1. Log into router admin panel (192.168.1.1) — navigate to WAN settings
 2. Confirm WAN connection type is PPPoE (not DHCP or Static IP)
-3. Verify PPPoE username format — TM format: [account]@unifi.my or [account]@streamyx.com
+3. Verify PPPoE username format — TM format: username@unifi or username@streamyx
 4. Re-enter PPPoE password manually — do not rely on saved credentials
 5. Check TM account status via technician portal — confirm account is active
 6. Set VLAN ID to 500 for internet WAN — missing VLAN causes authentication failure
@@ -368,6 +377,8 @@ Field Procedures:
 Safety Notes:
 - Never share customer PPPoE credentials outside TM systems
 - Confirm with customer before resetting any credentials
+
+Source: Current TM field workflow (technician portal, NOC, RADIUS check) as described by the TM R&D collaborator; general practice for the remaining steps
 ''';
 
       case 'vlan_config':
@@ -449,14 +460,15 @@ Field Procedures:
 2. Test DNS resolution — ping google.com; failure with successful IP ping confirms DNS fault
 3. Run nslookup google.com — check which DNS server is queried and response time
 4. Log into router admin — note current primary and secondary DNS addresses
-5. Change primary DNS to 8.8.8.8 and secondary to 1.1.1.1 — apply and save
+5. Temporarily set the DNS on the test device or router to a public DNS, for example 8.8.8.8, to confirm DNS is the cause — do not leave it changed
 6. Flush DNS cache — reboot router and run ipconfig /flushdns on Windows laptop
-7. Test browsing after DNS change — confirm websites load correctly
+7. Test browsing with the temporary DNS — confirm websites load, then restore the original DNS setting and record the result for escalation
 8. If specific websites still fail, check firewall rules blocking port 53 UDP/TCP
 
 Safety Notes:
-- Note original DNS addresses before changing — revert if custom DNS was intentional
-- DNS changes take effect immediately — no extended outage expected
+- Note the original DNS addresses before any test and restore them afterwards
+
+Source: General field practice, not from the TM training deck
 ''';
 
       // DEFAULT / OTHER
@@ -489,6 +501,8 @@ Field Procedures:
 Safety Notes:
 - Follow TM field safety guidelines at all times
 - Do not access street cabinets without proper authorisation
+
+Source: General field practice
 ''';
     }
   }

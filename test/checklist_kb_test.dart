@@ -160,4 +160,106 @@ void main() {
       }
     });
   });
+
+  group('knowledge-base sourcing (Step C)', () {
+    const twelve = [
+      'fiber_loss',
+      'onu_auth_failure',
+      'wifi_issue',
+      'speed_degradation',
+      'intermittent',
+      'ont_failure',
+      'router_failure',
+      'cable_damage',
+      'pppoe_auth',
+      'vlan_config',
+      'voip_issue',
+      'dns_issue',
+    ];
+    // The default entry is what any other id returns.
+    const all = [...twelve, 'general'];
+
+    String kb(String id) => ChecklistService.knowledgeBaseFor(id);
+
+    test('every entry has a Source line', () {
+      for (final id in all) {
+        final lines = kb(id).split('\n');
+        expect(
+          lines.where((l) => l.startsWith('Source:')).length,
+          1,
+          reason: '$id needs exactly one Source: line',
+        );
+      }
+      expect(kb('no_such_entry'), kb('general'));
+    });
+
+    test('no entry contains streamyx.com or unifi.my', () {
+      for (final id in all) {
+        expect(kb(id).contains('streamyx.com'), isFalse, reason: id);
+        expect(kb(id).contains('unifi.my'), isFalse, reason: id);
+      }
+    });
+
+    test('dns_issue: DNS is only changed temporarily, and restored', () {
+      final entry = kb('dns_issue');
+      final steps = fieldProceduresFromKb(entry);
+      expect(steps.length, 8);
+
+      // Step 5 is temporary and says not to leave it changed.
+      expect(steps[4], contains('Temporarily'));
+      expect(steps[4], contains('do not leave it changed'));
+      expect(steps.any((s) => s.startsWith('Change primary DNS')), isFalse);
+
+      // 8.8.8.8 appears only in steps 1 and 5.
+      final withIp = [
+        for (var i = 0; i < steps.length; i++)
+          if (steps[i].contains('8.8.8.8')) i + 1,
+      ];
+      expect(withIp, [1, 5]);
+      expect('8.8.8.8'.allMatches(entry).length, 2);
+
+      // Step 7 restores the original setting.
+      expect(steps[6], contains('restore the original DNS setting'));
+
+      // The safety note is the restore line.
+      expect(ChecklistService.safetyNotesFor('dns_issue'), [
+        'Note the original DNS addresses before any test and restore them afterwards',
+      ]);
+    });
+
+    test('pppoe_auth: step 3 uses the username@unifi format', () {
+      final steps = fieldProceduresFromKb(kb('pppoe_auth'));
+      expect(
+        steps[2],
+        'Verify PPPoE username format — TM format: username@unifi or username@streamyx',
+      );
+      expect(steps[2], contains('username@unifi'));
+      // The portal, NOC and RADIUS steps are still there.
+      expect(steps.any((s) => s.contains('technician portal')), isTrue);
+      expect(
+        steps.any((s) => s.contains('RADIUS') && s.contains('NOC')),
+        isTrue,
+      );
+    });
+
+    test('safety notes and the fallback work for every entry; Source is not '
+        'a checklist item or a safety note', () {
+      for (final id in all) {
+        final notes = ChecklistService.safetyNotesFor(id);
+        expect(notes.any((n) => n.startsWith('Source')), isFalse, reason: id);
+
+        final steps = fieldProceduresFromKb(kb(id));
+        expect(steps, isNotEmpty, reason: id);
+        expect(steps.any((s) => s.startsWith('Source')), isFalse, reason: id);
+
+        final items = ChecklistService.fallbackChecklistFor(id);
+        expect(items, isNotEmpty, reason: id);
+        expect(items.length, lessThanOrEqualTo(8), reason: id);
+        for (final item in items) {
+          expect(item['detail']!.startsWith('Source'), isFalse, reason: id);
+          expect(item['title'], isNotEmpty, reason: id);
+        }
+      }
+    });
+  });
 }
