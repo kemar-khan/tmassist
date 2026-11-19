@@ -3,6 +3,7 @@ import '../../config/app_constants.dart';
 import '../constants/service_areas.dart';
 import '../../utils/gemini_retry.dart';
 import '../config/timeouts.dart';
+import '../../utils/phone_clean.dart';
 
 class AiExtractionService {
   late final GenerativeModel _model;
@@ -35,6 +36,9 @@ Your job is to extract the following fields:
 - description: a clean, professional version of the customer's description
 - address: the location mentioned by the customer, or empty string if not mentioned
 - area: must be exactly one of these values: ${ServiceAreas.all.map((a) => '"$a"').join(', ')}. Pick the closest match to the location mentioned. Use "Other" if the location is unclear or not in the list.
+- phone: the customer's phone number, ONLY if the customer wrote one in their message. If no phone number is written, return an empty string. Never guess, never invent, and never copy a number from anywhere else.
+  * Do not return other numbers as a phone number, such as account numbers, ticket IDs, house or lot numbers, port numbers, VLAN IDs, speeds (for example 300Mbps), dates or times.
+  * Malaysian numbers look like 012-345 6789, 0123456789, 03-1234 5678, +60 12-345 6789 or 6012 3456789. Return it exactly as the customer wrote it.
 
 Category rules:
 - TV, home phone, website or DNS, and account or configuration problems are Software, even if the customer says "no signal" or "not working".
@@ -57,7 +61,8 @@ Example format:
   "title": "Internet Connection Down",
   "description": "Customer reports that their internet connection has been down since morning.",
   "address": "Puchong, Selangor",
-  "area": "Puchong"
+  "area": "Puchong",
+  "phone": ""
 }
 ''';
 
@@ -68,29 +73,35 @@ Example format:
         () => _model.generateContent(content).timeout(Timeouts.aiSuggestion),
         label: 'suggestion',
       );
-      final responseText = response.text ?? '';
-
-      final cleaned = responseText
-          .replaceAll('```json', '')
-          .replaceAll('```', '')
-          .trim();
-
-      final Map<String, dynamic> parsed = _parseJson(cleaned);
-
-      return {
-        'isRelevant': parsed['isRelevant']?.toString() ?? 'true',
-        'category': parsed['category']?.toString() ?? '',
-        'title': parsed['title']?.toString() ?? '',
-        'description': parsed['description']?.toString() ?? '',
-        'address': parsed['address']?.toString() ?? '',
-        'area': parsed['area']?.toString() ?? '',
-      };
+      return parseExtraction(response.text ?? '');
     } catch (e) {
       throw Exception('AI extraction failed: $e');
     }
   }
 
-  Map<String, dynamic> _parseJson(String text) {
+  /// Reads the AI's answer (code fences are removed first). Every key is
+  /// always present; a missing value is an empty string. `phone` is cleaned
+  /// by [cleanExtractedPhone] and is empty unless it is a valid number.
+  static Map<String, String> parseExtraction(String responseText) {
+    final cleaned = responseText
+        .replaceAll('```json', '')
+        .replaceAll('```', '')
+        .trim();
+
+    final Map<String, dynamic> parsed = _parseJson(cleaned);
+
+    return {
+      'isRelevant': parsed['isRelevant']?.toString() ?? 'true',
+      'category': parsed['category']?.toString() ?? '',
+      'title': parsed['title']?.toString() ?? '',
+      'description': parsed['description']?.toString() ?? '',
+      'address': parsed['address']?.toString() ?? '',
+      'area': parsed['area']?.toString() ?? '',
+      'phone': cleanExtractedPhone(parsed['phone']?.toString()),
+    };
+  }
+
+  static Map<String, dynamic> _parseJson(String text) {
     final start = text.indexOf('{');
     final end = text.lastIndexOf('}');
 
@@ -107,10 +118,11 @@ Example format:
       'description': _extractField(jsonString, 'description'),
       'address': _extractField(jsonString, 'address'),
       'area': _extractField(jsonString, 'area'),
+      'phone': _extractField(jsonString, 'phone'),
     };
   }
 
-  String _extractField(String json, String field) {
+  static String _extractField(String json, String field) {
     final pattern = RegExp('"$field"\\s*:\\s*"(.*?)"', dotAll: true);
     final match = pattern.firstMatch(json);
     return match?.group(1)?.trim() ?? '';

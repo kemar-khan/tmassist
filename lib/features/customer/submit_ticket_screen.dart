@@ -57,6 +57,8 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
   bool _showSlowHint = false;
   final TextEditingController _aiInputController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
+  // The Contact Number field; the AI can fill it when the text has a number.
+  final TextEditingController _contactController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
   final AiExtractionService _aiExtractionService = AiExtractionService();
@@ -341,6 +343,12 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
         if (aiArea != null) {
           _selectedArea = aiArea;
         }
+        // A phone number the customer wrote (already cleaned and checked). An
+        // empty result, or something already typed, leaves the field alone.
+        final aiPhone = result['phone'] ?? '';
+        if (aiPhone.isNotEmpty && _contactController.text.trim().isEmpty) {
+          _contactController.text = aiPhone;
+        }
       });
 
       showAppSnack(
@@ -375,6 +383,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
     _aiInputController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
+    _contactController.dispose();
     _slowHint.stop();
     super.dispose();
   }
@@ -510,6 +519,7 @@ class _SubmitTicketScreenState extends State<SubmitTicketScreen> {
                     children: [
                       AppTextField(
                         label: 'Contact Number',
+                        controller: _contactController,
                         hint: '0123456789',
                         prefixIcon: Icons.phone_outlined,
                         keyboardType: TextInputType.phone,
