@@ -114,7 +114,7 @@ Safety Notes:
 - Never look into a fibre end-face or active light source
 - Follow ladder (1:4 ratio) and full body harness rules when working on pole-mounted DPs
 
-Source: TM Training Centre, Unifi FTTH module (ONU LED table, PON power budget, tools)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       case 'onu_auth_failure':
@@ -142,7 +142,7 @@ Safety Notes:
 - Do not share the authentication password outside TM systems
 - Use the credentials in the TM work instruction
 
-Source: TM Training Centre, Unifi FTTH module (ONU normal working condition, fault test method)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       case 'wifi_issue':
@@ -213,7 +213,7 @@ Safety Notes:
 - Never look into a fibre end-face
 - Record test results with time for escalation
 
-Source: TM Training Centre, Unifi FTTH module (QoS internet speed slides, PON technology)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       case 'intermittent':
@@ -235,7 +235,7 @@ Field Procedures:
 1. Watch the ONU LEDs during a drop: LINK, AUTH, LAN1 and VOIP
 2. If LINK drops, it is a fibre-side fault: re-seat, inspect and clean both connectors, check for bends
 3. If only LAN1 or the PG WAN drops, check the LAN cable and the PG
-4. Check the power adapter and power port (the deck lists changing the adapter or power port)
+4. Check the power adapter and power port
 5. Measure received power with the power meter (sensitivity -28 dBm)
 6. Run a continuous ping for about 30 minutes and compare against the TM standard: packet loss up to 1%, latency up to 85 ms (general practice for the test)
 7. Replace the patch cord if no other cause is found
@@ -245,7 +245,7 @@ Safety Notes:
 - Never look into a fibre end-face
 - Note the exact times of each disconnection
 
-Source: TM Training Centre, Unifi FTTH module (ONU LED table, QoS slides, ONU fault test method)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       // HARDWARE SUBCATEGORIES
@@ -276,7 +276,7 @@ Safety Notes:
 - Switch off the ONU before disconnecting the fibre
 - Do not open the ONU casing (general practice)
 
-Source: TM Training Centre, Unifi FTTH module (ONU back and front panel, fault test method)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       case 'router_failure':
@@ -345,7 +345,7 @@ Safety Notes:
 - Never look into a fibre end-face or active light source
 - Switch off the ONU before cleaning or swapping fibre
 
-Source: TM Training Centre, Unifi FTTH module (fibre cleaning kits, inspection scope, FWS, fibre types)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       // SOFTWARE SUBCATEGORIES
@@ -410,7 +410,7 @@ Safety Notes:
 - Changing VLAN settings causes a brief outage, so inform the customer first
 - Record the original settings before changing them
 
-Source: TM Training Centre, Unifi FTTH module (HSBB VLAN table, CPE layout, ONU fault test method)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       case 'voip_issue':
@@ -437,7 +437,7 @@ Field Procedures:
 Safety Notes:
 - Inform the customer before rebooting the ONU, as internet drops briefly
 
-Source: TM Training Centre, Unifi FTTH module (ONU front panel, HSBB VLAN table)
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
 ''';
 
       case 'dns_issue':
