@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_customer_screen.dart';
+import 'features/auth/register_technician_screen.dart';
+import 'features/auth/technician_access_screen.dart';
 import 'features/supervisor/assign_ticket_screen.dart';
 import 'features/supervisor/ticket_detail_screen.dart';
 import 'features/supervisor/supervisor_main_screen.dart';
@@ -29,6 +31,18 @@ class AppRouter {
       case '/register':
         return MaterialPageRoute(
           builder: (_) => const RegisterCustomerScreen(),
+        );
+      case '/register-technician':
+        return MaterialPageRoute(
+          builder: (_) => const RegisterTechnicianScreen(),
+        );
+      case '/tech/waiting':
+        return MaterialPageRoute(
+          builder: (_) => const TechnicianAccessScreen(rejected: false),
+        );
+      case '/tech/rejected':
+        return MaterialPageRoute(
+          builder: (_) => const TechnicianAccessScreen(rejected: true),
         );
       case '/forgot-password':
         return MaterialPageRoute(builder: (_) => const ForgotPasswordScreen());

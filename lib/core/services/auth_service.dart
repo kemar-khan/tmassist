@@ -69,6 +69,74 @@ class AuthService {
     }
   }
 
+  /// Creates a technician account that waits for a supervisor to approve it.
+  /// The user document has role "technician" and approved false (the rules
+  /// allow nothing else on create). If the document cannot be written, the
+  /// new Auth user is removed again so the email can be used to retry; if even
+  /// that fails, the user is signed out so the app is never left half-made.
+  Future<UserCredential> registerTechnician({
+    required String fullName,
+    required String email,
+    required String phone,
+    required String staffId,
+    required String specialization,
+    required List<String> coverageAreas,
+    required String password,
+  }) async {
+    const fallback = 'Registration failed. Please try again.';
+
+    final UserCredential credential;
+    try {
+      credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+    } on FirebaseAuthException catch (e, st) {
+      throw AuthException(
+        message: friendlyError(e, fallback: fallback, stackTrace: st),
+        code: e.code,
+      );
+    } catch (e, st) {
+      throw AuthException(
+        message: friendlyError(e, fallback: fallback, stackTrace: st),
+      );
+    }
+
+    final user = credential.user;
+    if (user == null) {
+      throw AuthException(message: 'User registration failed.');
+    }
+
+    try {
+      await _firestore.collection('users').doc(user.uid).set({
+        'fullName': fullName.trim(),
+        'email': email.trim(),
+        'phone': phone.trim(),
+        'staffId': staffId,
+        'specialization': specialization,
+        'coverageAreas': coverageAreas,
+        'role': 'technician',
+        'approved': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return credential;
+    } catch (e, st) {
+      // The account exists without a profile: undo it.
+      try {
+        await user.delete();
+      } catch (_) {
+        try {
+          await _auth.signOut();
+        } catch (_) {}
+      }
+      throw AuthException(
+        message:
+            'Your account could not be set up. '
+            '${friendlyError(e, fallback: 'Please try again.', stackTrace: st)}',
+      );
+    }
+  }
+
   Future<void> login({required String email, required String password}) async {
     try {
       if (email.isEmpty || password.isEmpty) {

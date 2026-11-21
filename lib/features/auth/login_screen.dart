@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../utils/technician_access.dart';
 import '../../widgets/app_text_field.dart';
 import '../../widgets/home_header.dart';
 import '../../widgets/section_card.dart';
@@ -12,6 +13,78 @@ class LoginScreen extends StatefulWidget {
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
+}
+
+/// A registration card on the login screen. The whole card is tappable.
+class _RegisterCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  const _RegisterCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$title. $subtitle',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: Material(
+        color: AppColors.surfaceCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.brMd,
+          side: const BorderSide(color: AppColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.s3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryTint,
+                        borderRadius: AppRadius.brMd,
+                      ),
+                      child: Icon(icon, size: 22, color: AppColors.primary),
+                    ),
+                    const Spacer(),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.inkMuted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s3),
+                Text(
+                  title,
+                  style: AppText.bodyStrong.copyWith(color: AppColors.ink),
+                ),
+                const SizedBox(height: AppSpacing.s1),
+                Text(
+                  subtitle,
+                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _LoginScreenState extends State<LoginScreen> {
@@ -60,7 +133,14 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (role == 'supervisor') {
         Navigator.pushReplacementNamed(context, '/supervisor');
       } else if (role == 'technician') {
-        Navigator.pushReplacementNamed(context, '/tech');
+        switch (technicianAccessState(userData!)) {
+          case TechnicianAccess.rejected:
+            Navigator.pushReplacementNamed(context, '/tech/rejected');
+          case TechnicianAccess.pending:
+            Navigator.pushReplacementNamed(context, '/tech/waiting');
+          case TechnicianAccess.approved:
+            Navigator.pushReplacementNamed(context, '/tech');
+        }
       } else {
         setState(() {
           _error = 'User role not found.';
@@ -294,23 +374,53 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: AppSpacing.s4),
 
-                    Center(
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.s4,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            "New to TMAssist ?",
-                            style: AppText.body.copyWith(
+                            "New to TMAssist?",
+                            style: AppText.bodyStrong.copyWith(
                               color: AppColors.inkMuted,
                             ),
                           ),
-                          TextButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () =>
-                                      Navigator.pushNamed(context, '/register'),
-                            child: const Text("Register Now"),
+                          const SizedBox(height: AppSpacing.s3),
+                          IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
+                                  child: _RegisterCard(
+                                    icon: Icons.person_outline,
+                                    title: "Register as Customer",
+                                    subtitle: "Report and track service issues",
+                                    onTap: _isLoading
+                                        ? null
+                                        : () => Navigator.pushNamed(
+                                            context,
+                                            '/register',
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.s3),
+                                Expanded(
+                                  child: _RegisterCard(
+                                    icon: Icons.handyman_outlined,
+                                    title: "Register as Technician",
+                                    subtitle: "Needs supervisor approval",
+                                    onTap: _isLoading
+                                        ? null
+                                        : () => Navigator.pushNamed(
+                                            context,
+                                            '/register-technician',
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

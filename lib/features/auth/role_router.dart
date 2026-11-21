@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../core/config/timeouts.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/theme/app_tokens.dart';
+import '../../utils/technician_access.dart';
 import '../../widgets/stream_error.dart';
+import 'technician_access_screen.dart';
 import '../customer/customer_main_screen.dart';
 import '../supervisor/supervisor_main_screen.dart';
 import '../technician/technician_main_screen.dart';
@@ -94,7 +96,14 @@ class _RoleRouterState extends State<RoleRouter> {
         } else if (role == 'supervisor') {
           return const SupervisorMainScreen();
         } else if (role == 'technician') {
-          return const TechnicianMainScreen();
+          switch (technicianAccessState(userData)) {
+            case TechnicianAccess.rejected:
+              return const TechnicianAccessScreen(rejected: true);
+            case TechnicianAccess.pending:
+              return const TechnicianAccessScreen(rejected: false);
+            case TechnicianAccess.approved:
+              return const TechnicianMainScreen();
+          }
         }
 
         return _problem(
