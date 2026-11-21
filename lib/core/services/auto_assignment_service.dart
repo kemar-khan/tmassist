@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../utils/coverage.dart';
+import '../../utils/pending_technicians.dart';
 
 class AutoAssignmentService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -15,7 +16,10 @@ class AutoAssignmentService {
           .where('role', isEqualTo: 'technician')
           .get();
 
-      if (techSnap.docs.isEmpty) return null;
+      // Pending and rejected technicians never get tickets; a missing
+      // `approved` field (older accounts) counts as approved.
+      final approvedTechs = assignableOnly(techSnap.docs, (d) => d.data());
+      if (approvedTechs.isEmpty) return null;
 
       final activeTicketsSnap = await _firestore
           .collection('tickets')
@@ -27,7 +31,7 @@ class AutoAssignmentService {
           .where('status', whereIn: ['RESOLVED', 'CLOSED'])
           .get();
 
-      final allTechs = techSnap.docs;
+      final allTechs = approvedTechs;
 
       bool matchesSkill(QueryDocumentSnapshot t) {
         final spec = t.data() as Map<String, dynamic>;

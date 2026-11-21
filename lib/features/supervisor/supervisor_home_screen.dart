@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_tokens.dart';
 import '../../utils/cancelled_status.dart';
+import '../../utils/pending_technicians.dart';
+import 'pending_technicians_screen.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/header_icon_badge.dart';
 import '../../widgets/home_header.dart';
@@ -35,6 +37,27 @@ class SupervisorHomeScreen extends StatefulWidget {
 
 class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
   String? _selectedCategory;
+
+  // Technicians waiting for approval (role technician, approved false). Created
+  // once; "rejected" is filtered in Dart by isPendingTechnician.
+  late final Stream<QuerySnapshot> _pendingStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _pendingStream = FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'technician')
+        .where('approved', isEqualTo: false)
+        .snapshots();
+  }
+
+  void _openPendingTechnicians() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PendingTechniciansScreen()),
+    );
+  }
 
   void _openTickets(String status) {
     final openWithStatus = widget.onOpenTicketsWithStatus;
@@ -163,41 +186,58 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
               final isFiltering = _selectedCategory != null;
               final shownLimit = isFiltering ? 10 : 3;
 
-              return Scaffold(
-                body: SupervisorHomeContent(
-                  supervisorName: supervisorName,
-                  totalTickets: totalTickets,
-                  newTickets: newTickets,
-                  assignedTickets: assignedTickets,
-                  inProgressTickets: inProgressTickets,
-                  resolvedTickets: resolvedTickets,
-                  closedTickets: closedTickets,
-                  weeklyCounts: weeklyCounts,
-                  weeklyFactors: weeklyFactors,
-                  categoryKeys: categoryKeys,
-                  categoryTotals: categoryTotals,
-                  selectedCategory: _selectedCategory,
-                  filteredCount: filteredTickets.length,
-                  recentTickets: filteredTickets.length > shownLimit
-                      ? filteredTickets.sublist(0, shownLimit)
-                      : filteredTickets,
-                  onViewAll: () => _openTickets('All'),
-                  onOpenNew: () => _openTickets('NEW'),
-                  onOpenAwaitingSignOff: () => _openTickets('RESOLVED'),
-                  onCategoryTap: (cat) => setState(
-                    () => _selectedCategory = _selectedCategory == cat
-                        ? null
-                        : cat,
-                  ),
-                  onClearFilter: () => setState(() {
-                    _selectedCategory = null;
-                  }),
-                  onOpenTicket: (ticketId) => Navigator.pushNamed(
-                    context,
-                    '/supervisor/ticket',
-                    arguments: ticketId,
-                  ),
-                ),
+              return StreamBuilder<QuerySnapshot>(
+                stream: _pendingStream,
+                builder: (context, pendingSnapshot) {
+                  // While loading, or if the read fails, the card shows 0
+                  // rather than breaking the dashboard.
+                  final pendingCount = (pendingSnapshot.data?.docs ?? [])
+                      .where(
+                        (d) => isPendingTechnician(
+                          d.data() as Map<String, dynamic>,
+                        ),
+                      )
+                      .length;
+
+                  return Scaffold(
+                    body: SupervisorHomeContent(
+                      pendingTechnicians: pendingCount,
+                      onOpenPendingTechnicians: _openPendingTechnicians,
+                      supervisorName: supervisorName,
+                      totalTickets: totalTickets,
+                      newTickets: newTickets,
+                      assignedTickets: assignedTickets,
+                      inProgressTickets: inProgressTickets,
+                      resolvedTickets: resolvedTickets,
+                      closedTickets: closedTickets,
+                      weeklyCounts: weeklyCounts,
+                      weeklyFactors: weeklyFactors,
+                      categoryKeys: categoryKeys,
+                      categoryTotals: categoryTotals,
+                      selectedCategory: _selectedCategory,
+                      filteredCount: filteredTickets.length,
+                      recentTickets: filteredTickets.length > shownLimit
+                          ? filteredTickets.sublist(0, shownLimit)
+                          : filteredTickets,
+                      onViewAll: () => _openTickets('All'),
+                      onOpenNew: () => _openTickets('NEW'),
+                      onOpenAwaitingSignOff: () => _openTickets('RESOLVED'),
+                      onCategoryTap: (cat) => setState(
+                        () => _selectedCategory = _selectedCategory == cat
+                            ? null
+                            : cat,
+                      ),
+                      onClearFilter: () => setState(() {
+                        _selectedCategory = null;
+                      }),
+                      onOpenTicket: (ticketId) => Navigator.pushNamed(
+                        context,
+                        '/supervisor/ticket',
+                        arguments: ticketId,
+                      ),
+                    ),
+                  );
+                },
               );
             },
           );
@@ -300,8 +340,14 @@ class SupervisorHomeContent extends StatelessWidget {
   final VoidCallback onClearFilter;
   final ValueChanged<String> onOpenTicket;
 
+  /// Technician requests waiting for approval, and the tap on that card.
+  final int pendingTechnicians;
+  final VoidCallback onOpenPendingTechnicians;
+
   const SupervisorHomeContent({
     super.key,
+    required this.pendingTechnicians,
+    required this.onOpenPendingTechnicians,
     required this.supervisorName,
     required this.totalTickets,
     required this.newTickets,
@@ -356,6 +402,8 @@ class SupervisorHomeContent extends StatelessWidget {
               resolvedCount: resolvedTickets,
               onOpenNew: onOpenNew,
               onOpenAwaitingSignOff: onOpenAwaitingSignOff,
+              pendingCount: pendingTechnicians,
+              onOpenPending: onOpenPendingTechnicians,
             ),
           ),
           Padding(
@@ -595,12 +643,16 @@ class _AttentionCard extends StatelessWidget {
   final int resolvedCount;
   final VoidCallback onOpenNew;
   final VoidCallback onOpenAwaitingSignOff;
+  final int pendingCount;
+  final VoidCallback onOpenPending;
 
   const _AttentionCard({
     required this.newCount,
     required this.resolvedCount,
     required this.onOpenNew,
     required this.onOpenAwaitingSignOff,
+    required this.pendingCount,
+    required this.onOpenPending,
   });
 
   @override
@@ -638,6 +690,23 @@ class _AttentionCard extends StatelessWidget {
               bg: AppColors.resolvedBg,
               onTap: onOpenAwaitingSignOff,
             ),
+            const Divider(
+              height: 1,
+              indent: AppSpacing.s4,
+              endIndent: AppSpacing.s4,
+              color: AppColors.border,
+            ),
+            _AttentionRow(
+              count: pendingCount,
+              title: 'Pending technicians',
+              subtitle: pendingCount == 0
+                  ? 'No requests waiting'
+                  : 'Waiting for your approval',
+              fg: pendingCount == 0 ? AppColors.closedFg : AppColors.assignedFg,
+              bg: pendingCount == 0 ? AppColors.closedBg : AppColors.assignedBg,
+              semanticsHint: 'open pending technicians',
+              onTap: onOpenPending,
+            ),
           ],
         ),
       ),
@@ -652,6 +721,7 @@ class _AttentionRow extends StatelessWidget {
   final Color fg;
   final Color bg;
   final VoidCallback onTap;
+  final String semanticsHint;
 
   const _AttentionRow({
     required this.count,
@@ -660,13 +730,14 @@ class _AttentionRow extends StatelessWidget {
     required this.fg,
     required this.bg,
     required this.onTap,
+    this.semanticsHint = 'open ticket list',
   });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: '$title, $count, open ticket list',
+      label: '$title, $count, $semanticsHint',
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,

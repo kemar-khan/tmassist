@@ -10,6 +10,7 @@ import '../../widgets/status_badge.dart';
 import '../../utils/friendly_error.dart';
 import '../../widgets/stream_error.dart';
 import '../../utils/coverage.dart';
+import '../../utils/pending_technicians.dart';
 
 class AssignTicketScreen extends StatefulWidget {
   final String ticketId;
@@ -202,7 +203,12 @@ class _AssignTicketScreenState extends State<AssignTicketScreen> {
               );
             }
 
-            final technicians = techSnapshot.data?.docs ?? [];
+            // Pending and rejected technicians are not offered; a missing
+            // `approved` field (older accounts) counts as approved.
+            final technicians = assignableOnly(
+              techSnapshot.data?.docs ?? <QueryDocumentSnapshot>[],
+              (d) => d.data() as Map<String, dynamic>,
+            );
 
             return AssignTicketView(
               ticketId: widget.ticketId,
