@@ -207,6 +207,9 @@ class SubcategoryDetector {
       _Term('internet outage', 2, wholeWord: true),
       _Term('internet mati', 2, wholeWord: true),
       _Term('internet tak jalan', 2, wholeWord: true),
+      _Term('internet connection down', 2, wholeWord: true),
+      _Term('internet connection is down', 2, wholeWord: true),
+      _Term('internet connection has been down', 2, wholeWord: true),
       _Term('no signal', 1),
       // Malay
       _Term('line putus', 3),

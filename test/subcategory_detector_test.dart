@@ -297,6 +297,36 @@ void main() {
       expect(run('internet tak jalan', 'Other').subcategory, 'fiber_loss');
     });
 
+    test('"internet connection down" phrases -> fiber_loss', () {
+      for (final phrase in [
+        'internet connection down',
+        'internet connection is down',
+        'internet connection has been down',
+      ]) {
+        final r = run(phrase, 'Other');
+        expect(r.subcategory, 'fiber_loss', reason: phrase);
+        expect(r.matchedTerms, [phrase], reason: phrase);
+      }
+    });
+
+    test('an "Internet Connection Down" ticket -> fiber_loss', () {
+      final r = SubcategoryDetector.detect(
+        category: 'Network',
+        title: 'Internet Connection Down',
+        description:
+            'Customer reports that their internet connection has been down '
+            'since morning.',
+      );
+      expect(r.subcategory, 'fiber_loss');
+    });
+
+    test('"WiFi connection down" is not fiber_loss', () {
+      expect(
+        run('WiFi connection down', 'Network').subcategory,
+        isNot('fiber_loss'),
+      );
+    });
+
     test('plain "down" is not a fiber_loss term', () {
       final tv = run('TV is down', 'Software');
       expect(tv.subcategory, isNot('fiber_loss'));
