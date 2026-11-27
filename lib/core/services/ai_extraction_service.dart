@@ -33,7 +33,7 @@ Your job is to extract the following fields:
     * Software: TV or IPTV problems (no signal on the TV box, channels not loading), home phone or voice problems (no dial tone, cannot make or receive calls), websites not opening or DNS problems, login, password or PPPoE problems, service or VLAN configuration.
     * Other: relevant service requests that are not a technical fault, such as billing or account enquiries, new installation or relocation, package changes, or general questions.
 - title: a short, clear summary of the issue (max 10 words)
-- description: a clean, professional version of the customer's description
+- description: a clean version of the customer's description in English, keeping the customer's own words for symptoms and devices
 - address: the location mentioned by the customer, or empty string if not mentioned
 - area: must be exactly one of these values: ${ServiceAreas.all.map((a) => '"$a"').join(', ')}. Pick the closest match to the location mentioned. Use "Other" if the location is unclear or not in the list.
 - phone: the customer's phone number, ONLY if the customer wrote one in their message. If no phone number is written, return an empty string. Never guess, never invent, and never copy a number from anywhere else.
@@ -49,20 +49,21 @@ Category rules:
 Language rules:
 - The customer may write in English or Malay. Always write title and description in English.
 - In the description, keep the customer's own key terms for devices and services unchanged (for example "TV box", "home phone", "website", "wifi", "router", "ONU", "VLAN"). Do not replace them with generic words.
+- Keep the customer's own words for the symptom (for example 'internet is down', 'red light', 'slow', 'keeps disconnecting'). Do not replace them with different wording.
 
 Customer input:
 "$userInput"
 
 Respond ONLY with a valid JSON object. No explanation, no markdown, no extra text.
-Example format:
+Format (this is only a template; never copy any text from it, and use only what the customer wrote):
 {
-  "isRelevant": "true",
-  "category": "Network",
-  "title": "Internet Connection Down",
-  "description": "Customer reports that their internet connection has been down since morning.",
-  "address": "Puchong, Selangor",
-  "area": "Puchong",
-  "phone": ""
+  "isRelevant": "true or false",
+  "category": "one of Network, Hardware, Software, Other",
+  "title": "short summary in English, max 10 words",
+  "description": "the customer's description in English, keeping their own key words",
+  "address": "location mentioned, or empty string",
+  "area": "one value from the area list above",
+  "phone": "phone number written by the customer, or empty string"
 }
 ''';
 
