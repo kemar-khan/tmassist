@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/checklist_service.dart';
@@ -12,6 +14,93 @@ import '../../utils/slow_hint.dart';
 import '../../widgets/slow_hint_text.dart';
 import '../../utils/subcategory_labels.dart';
 
+/// A snack bar to show when a generate run ends.
+typedef ChecklistMessage = ({String text, SnackKind kind});
+
+const ChecklistMessage checklistGenerated = (
+  text: 'Checklist generated successfully!',
+  kind: SnackKind.success,
+);
+const ChecklistMessage checklistFromKnowledgeBase = (
+  text: 'AI was unavailable. The checklist uses the knowledge base steps.',
+  kind: SnackKind.info,
+);
+const ChecklistMessage checklistKeptAiUnavailable = (
+  text: 'AI unavailable. Your current checklist was kept. Please try again.',
+  kind: SnackKind.error,
+);
+const ChecklistMessage checklistKeptTooSlow = (
+  text: 'Taking too long. Your current checklist was kept. Please try again.',
+  kind: SnackKind.error,
+);
+const ChecklistMessage checklistFailed = (
+  text: 'Could not generate the checklist. Please try again.',
+  kind: SnackKind.error,
+);
+
+/// One generate run, without any Firebase or Gemini of its own: [generate]
+/// asks for the items, [usedFallback] says whether they came from the no-AI
+/// fallback, and [save] writes them. Returns the message to show.
+///
+/// When a checklist already exists ([hasExisting]), [save] is called only for
+/// a real AI result: a fallback, an empty result, an error or a timeout keeps
+/// the current checklist. A first-time run saves the fallback too.
+Future<ChecklistMessage> runChecklistGeneration({
+  required bool hasExisting,
+  required Future<List<Map<String, String>>> Function() generate,
+  required bool Function() usedFallback,
+  required Future<void> Function(List<Map<String, String>> items) save,
+}) async {
+  final List<Map<String, String>> items;
+  try {
+    items = await generate();
+  } on TimeoutException {
+    return hasExisting ? checklistKeptTooSlow : checklistFailed;
+  } catch (_) {
+    return hasExisting ? checklistKeptAiUnavailable : checklistFailed;
+  }
+
+  final fallback = usedFallback();
+  if (hasExisting && (fallback || items.isEmpty)) {
+    return checklistKeptAiUnavailable;
+  }
+  // Nothing usable came back: write nothing.
+  if (items.isEmpty) return checklistFailed;
+
+  try {
+    await save(items);
+  } catch (_) {
+    return checklistFailed;
+  }
+  return fallback ? checklistFromKnowledgeBase : checklistGenerated;
+}
+
+/// Asks before an existing checklist is replaced. False for "Cancel" and for a
+/// tap outside the dialog.
+Future<bool> confirmRegenerate(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Regenerate checklist?'),
+      content: const Text(
+        'This replaces the current checklist and clears all ticks.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: TextButton.styleFrom(foregroundColor: AppColors.cancelledFg),
+          child: const Text('Replace'),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}
+
 class ChecklistScreen extends StatefulWidget {
   final String ticketId;
 
@@ -23,7 +112,6 @@ class ChecklistScreen extends StatefulWidget {
 
 class _ChecklistScreenState extends State<ChecklistScreen> {
   bool _isGenerating = false;
-  final ChecklistService _checklistService = ChecklistService();
 
   // Created once: a stream made inside build() would re-subscribe (and flash
   // a loading screen) on every setState, such as when generation starts.
@@ -74,148 +162,43 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     );
     final hasExisting = checklistItems.isNotEmpty;
 
-    // If existing checklist, show options dialog
-    if (hasExisting) {
-      final choice = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Regenerate Checklist'),
-          content: const Text(
-            'What would you like to do with the current checklist?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'replace'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.cancelledFg,
-              ),
-              child: const Text('Replace All'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, 'add'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-              ),
-              child: const Text('Add New Items'),
-            ),
-          ],
-        ),
-      );
+    // Replacing a checklist (and its ticks) needs a confirmation first.
+    if (hasExisting && !await confirmRegenerate(context)) return;
 
-      if (choice == null) return;
-      await _generate(ticketData, addToExisting: choice == 'add');
-    } else {
-      await _generate(ticketData, addToExisting: false);
-    }
+    await _generate(ticketData, hasExisting: hasExisting);
   }
 
   Future<void> _generate(
     Map<String, dynamic> ticketData, {
-    required bool addToExisting,
+    required bool hasExisting,
   }) async {
     setState(() => _isGenerating = true);
     _slowHint.start(() {
       if (mounted) setState(() => _showSlowHint = true);
     });
 
+    // A new service for every run: its fallback flag and detection belong to
+    // this run only, even if an earlier, timed-out run finishes late.
+    final service = ChecklistService();
+
     try {
-      final category = ticketData['category']?.toString() ?? 'Other';
-      final title = ticketData['title']?.toString() ?? '';
-      final description = ticketData['description']?.toString() ?? '';
-
-      // Get existing items if adding
-      List<Map<String, String>>? existingItems;
-      if (addToExisting) {
-        final raw = List<Map<String, dynamic>>.from(
-          (ticketData['checklistItems'] ?? []).map(_asMap),
-        );
-        existingItems = raw
-            .map(
-              (e) => {
-                'title': e['title']?.toString() ?? '',
-                'detail': e['detail']?.toString() ?? '',
-                'priority': e['priority']?.toString() ?? 'Medium',
-                'estimatedTime': e['estimatedTime']?.toString() ?? '10 mins',
-              },
+      final message = await runChecklistGeneration(
+        hasExisting: hasExisting,
+        generate: () => service
+            .generateChecklist(
+              ticketId: widget.ticketId,
+              category: ticketData['category']?.toString() ?? 'Other',
+              title: ticketData['title']?.toString() ?? '',
+              description: ticketData['description']?.toString() ?? '',
             )
-            .toList();
-      }
-
-      final newItems = await _checklistService
-          .generateChecklist(
-            ticketId: widget.ticketId,
-            category: category,
-            title: title,
-            description: description,
-            existingItems: existingItems,
-            addToExisting: addToExisting,
-          )
-          .timeout(Timeouts.checklistGeneration);
-
-      // Nothing usable came back: keep the current checklist as it is.
-      if (newItems.isEmpty) {
-        if (mounted) _showGenerateError();
-        return;
-      }
-
-      // Combine or replace
-      final finalItems = addToExisting && existingItems != null
-          ? [...existingItems, ...newItems]
-          : newItems;
-
-      // Build done list
-      List<bool> donelist;
-      if (addToExisting && existingItems != null) {
-        final existingDone = List<bool>.from(ticketData['checklistDone'] ?? []);
-        donelist = [...existingDone, ...List.filled(newItems.length, false)];
-      } else {
-        donelist = List.filled(finalItems.length, false);
-      }
-
-      // The ticket and the report draft change in ONE batch: the draft's
-      // generated part (built from the old checklist) is cleared in the same
-      // write, while the technician's notes and photo stay. The draft is read
-      // first, so a failure leaves everything as it was. A submitted report
-      // (reports/{id}) is final and is never touched.
-      final db = FirebaseFirestore.instance;
-      final draftRef = db.collection('drafts').doc(widget.ticketId);
-      final draftSnap = await draftRef.get();
-      final batch = db.batch();
-      // The detected issue type is saved with the checklist, for the "Based
-      // on" label and for finding similar cases later.
-      final detection = _checklistService.lastDetection;
-      batch.update(db.collection('tickets').doc(widget.ticketId), {
-        'checklistItems': finalItems,
-        'checklistDone': donelist,
-        if (detection != null) ...{
-          'detectedSubcategory': detection.subcategory,
-          'detectedConfidence': detection.confidence,
-        },
-        // Tells the screen to show the "AI unavailable" note.
-        'checklistSource': _checklistService.lastUsedFallback
-            ? 'knowledge_base'
-            : 'ai',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      if (draftSnap.exists) {
-        batch.update(draftRef, {
-          ...staleDraftFields,
-          'checklistSignature': FieldValue.delete(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-      await batch.commit();
+            .timeout(Timeouts.checklistGeneration),
+        usedFallback: () => service.lastUsedFallback,
+        save: (items) => _saveChecklist(items, service),
+      );
 
       if (mounted) {
-        showAppSnack(
-          context,
-          'Checklist generated successfully!',
-          kind: SnackKind.success,
-        );
+        showAppSnack(context, message.text, kind: message.kind);
       }
-    } catch (_) {
-      // Timeout, network or AI errors: the checklist is left untouched.
-      if (mounted) _showGenerateError();
     } finally {
       _slowHint.stop();
       if (mounted) {
@@ -227,12 +210,44 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     }
   }
 
-  void _showGenerateError() {
-    showAppSnack(
-      context,
-      'Could not generate the checklist. Please try again.',
-      kind: SnackKind.error,
-    );
+  /// Saves a new checklist in place of the old one, with every item unticked.
+  Future<void> _saveChecklist(
+    List<Map<String, String>> items,
+    ChecklistService service,
+  ) async {
+    final donelist = List.filled(items.length, false);
+
+    // The ticket and the report draft change in ONE batch: the draft's
+    // generated part (built from the old checklist) is cleared in the same
+    // write, while the technician's notes and photo stay. The draft is read
+    // first, so a failure leaves everything as it was. A submitted report
+    // (reports/{id}) is final and is never touched.
+    final db = FirebaseFirestore.instance;
+    final draftRef = db.collection('drafts').doc(widget.ticketId);
+    final draftSnap = await draftRef.get();
+    final batch = db.batch();
+    // The detected issue type is saved with the checklist, for the "Based
+    // on" label and for finding similar cases later.
+    final detection = service.lastDetection;
+    batch.update(db.collection('tickets').doc(widget.ticketId), {
+      'checklistItems': items,
+      'checklistDone': donelist,
+      if (detection != null) ...{
+        'detectedSubcategory': detection.subcategory,
+        'detectedConfidence': detection.confidence,
+      },
+      // Tells the screen to show the "AI unavailable" note.
+      'checklistSource': service.lastUsedFallback ? 'knowledge_base' : 'ai',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    if (draftSnap.exists) {
+      batch.update(draftRef, {
+        ...staleDraftFields,
+        'checklistSignature': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
   }
 
   /// The screen updates at once from the overlay; the write then runs in a

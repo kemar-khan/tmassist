@@ -147,8 +147,8 @@ Fields: `customerName`, `category`, `priority`, `createdAt`, `address`, `title`,
 **Item card**: round 24px checkbox (a `GestureDetector`, no label or tooltip), title (bold 14, strikethrough and grey when done), a priority pill ("High" red, "Medium" orange, anything else green), `detail`, and a clock icon with `estimatedTime`. No notes field exists.
 
 **How it is generated**
-1. Button → `_handleGenerate`. If a checklist already exists, an `AlertDialog` "Regenerate Checklist" asks "What would you like to do with the current checklist?" with "Replace All" (red text) and "Add New Items" (filled blue). Dismissing does nothing.
-2. `ChecklistService.generateChecklist(ticketId, category, title, description, existingItems, addToExisting)`:
+1. Button → `_handleGenerate`. If a checklist already exists, an `AlertDialog` "Regenerate checklist?" says "This replaces the current checklist and clears all ticks." with "Cancel" and "Replace" (red text). Cancel and tapping outside do nothing. If the AI fails or is too slow during a regeneration, the current checklist is kept and nothing is written.
+2. `ChecklistService.generateChecklist(ticketId, category, title, description)`:
    - Classifies a subcategory with keyword rules (`_detectSubcategory`) and loads a built-in knowledge base for it.
    - Reads up to 5 past tickets with the same `category` and status RESOLVED or CLOSED as context (on failure the context becomes "Could not retrieve similar tickets.").
    - Calls Gemini `gemini-2.5-flash` with a prompt asking for 5 to 8 items, each with `title`, `detail`, `priority`, `estimatedTime`, as a JSON array.

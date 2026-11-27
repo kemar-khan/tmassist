@@ -55,7 +55,7 @@ All screens live under `lib/features/<role>/`. "Reached from" lists what navigat
 | My Jobs (home) | `technician/tech_home_screen.dart` | Today's jobs | AppBar "My Jobs / Technician Portal" with logout icon, blue header with counters (Assigned, In Progress, Resolved, Closed), filter chips (All, Assigned, In Progress, Resolved, Closed, Cancelled), job cards ("START JOB >" hint on assigned) | Tab → `/tech/ticket` |
 | My Tasks | `technician/assigned_ticket_list_screen.dart` | Searchable list of own tickets | AppBar "My Tasks", blue search bar, status chips (same six), ticket cards (badge, date, id, title, description, address, "View Details") | Tab → `/tech/ticket` |
 | Ticket detail | `technician/ticket_detail_screen.dart` | Work one ticket | Sections: Update Job Status (status card + **START JOB** or a hint card), Actions (**CHECKLIST**, **REPORT** buttons; hidden for cancelled), Progress Timeline, Ticket Info, Activity Log, Attachments | Lists → `/tech/checklist`, `/tech/report` |
-| Checklist | `technician/checklist_screen.dart` | AI troubleshooting checklist | Blue header with title, category pill, progress bar; empty state "No checklist yet" + **GENERATE AI CHECKLIST**; items (checkbox, title, detail, priority, time); **Regenerate Checklist** (dialog: Replace All / Add New Items); "TICKET READY FOR REPORT" when all done | Ticket detail → pops |
+| Checklist | `technician/checklist_screen.dart` | AI troubleshooting checklist | Blue header with title, category pill, progress bar; empty state "No checklist yet" + **GENERATE AI CHECKLIST**; items (checkbox, title, detail, priority, time); **Regenerate Checklist** (confirm dialog: Cancel / Replace); "TICKET READY FOR REPORT" when all done | Ticket detail → pops |
 | Report | `technician/report_screen.dart` | Write and submit the service report | Sections: Issue Summary, Steps Taken, Resolution Summary (read-only, generated from a template), Technician Notes (editable), Proof of Completion (optional photo/PDF with Replace/Remove), Technician Sign-off (required signature pad), supervisor comments and sign-off (read-only after submit); buttons: Generate Report → then Export as PDF + Submit Report side by side | Ticket detail → pops after submit |
 | Analytics | `technician/tech_analytics_screen.dart` | Personal stats | "My Analytics" header; Performance Summary (Total Assigned, In Progress, Resolved, Resolution Rate); Checklist Performance; Quick Analytics (Resolved This Week bars, Tickets by Category) | Tab |
 | Profile | `technician/profile_screen.dart` | Account + coverage | "My Profile", avatar, name, "FIELD TECHNICIAN" pill, Staff ID, Email, Specialization, **Coverage Areas** chip grid (tap toggles and saves immediately), LOGOUT | Tab → `/login` |
@@ -246,7 +246,7 @@ Gemini (`gemini-2.5-flash`) is called directly from the app in two places.
 ### 7.2 Troubleshooting checklist: Technician Checklist screen
 - Empty state "No checklist yet" with the button **GENERATE AI CHECKLIST**.
 - Items show a checkbox, title, detail text, a priority chip and an estimated time. The header shows a progress bar of completed items.
-- **Regenerate Checklist** opens a dialog: *Replace All* or *Add New Items*.
+- **Regenerate Checklist** asks *"Regenerate checklist?"* (*Cancel* or *Replace*). Replacing clears all ticks; if the AI is unavailable the current checklist is kept.
 - Items can only be ticked; they cannot be edited or deleted.
 - When all items are done, a **TICKET READY FOR REPORT** button appears.
 

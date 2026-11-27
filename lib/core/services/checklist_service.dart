@@ -114,7 +114,7 @@ Safety Notes:
 - Never look into a fibre end-face or active light source
 - Follow ladder (1:4 ratio) and full body harness rules when working on pole-mounted DPs
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; safety reminders are general field-safety practice.
 ''';
 
       case 'onu_auth_failure':
@@ -142,7 +142,7 @@ Safety Notes:
 - Do not share the authentication password outside TM systems
 - Use the credentials in the TM work instruction
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; safety reminders are general field-safety practice.
 ''';
 
       case 'wifi_issue':
@@ -213,7 +213,7 @@ Safety Notes:
 - Never look into a fibre end-face
 - Record test results with time for escalation
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; the latency, throughput and packet-loss thresholds are also from the TROS Part III-A technical specification; safety reminders are general field-safety practice.
 ''';
 
       case 'intermittent':
@@ -245,7 +245,7 @@ Safety Notes:
 - Never look into a fibre end-face
 - Note the exact times of each disconnection
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; the latency and packet-loss thresholds are also from the TROS Part III-A technical specification; safety reminders are general field-safety practice.
 ''';
 
       // HARDWARE SUBCATEGORIES
@@ -276,7 +276,7 @@ Safety Notes:
 - Switch off the ONU before disconnecting the fibre
 - Do not open the ONU casing (general practice)
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; safety reminders are general field-safety practice.
 ''';
 
       case 'router_failure':
@@ -345,7 +345,7 @@ Safety Notes:
 - Never look into a fibre end-face or active light source
 - Switch off the ONU before cleaning or swapping fibre
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; safety reminders are general field-safety practice.
 ''';
 
       // SOFTWARE SUBCATEGORIES
@@ -399,7 +399,7 @@ Required Tools:
 Field Procedures:
 1. Confirm which service is affected: internet, IPTV or voice
 2. Check the ONU LAN1 LED is white and that LAN1 connects to the PG WAN port
-3. Check the PG WAN and INTERNET LEDs
+3. Check the PG WAN and INTERNET LEDs (general practice)
 4. Verify the VLAN for the affected service: internet 500, IPTV 600, voice 400
 5. For IPTV, confirm the STB is connected to PG LAN4
 6. For voice, confirm the phone is on ONU TEL1 or TEL2 and the VOIP LED is white
@@ -410,7 +410,7 @@ Safety Notes:
 - Changing VLAN settings causes a brief outage, so inform the customer first
 - Record the original settings before changing them
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; safety reminders are general field-safety practice.
 ''';
 
       case 'voip_issue':
@@ -437,7 +437,7 @@ Field Procedures:
 Safety Notes:
 - Inform the customer before rebooting the ONU, as internet drops briefly
 
-Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck and the TROS Part III-A technical specification; safety reminders are general field-safety practice
+Source: Technical content (LED meanings, VLAN IDs, ports, thresholds, fault flow) from the TM Training Centre Unifi FTTH modules review deck; safety reminders are general field-safety practice.
 ''';
 
       case 'dns_issue':
@@ -617,9 +617,10 @@ Source: General field practice
     required String category,
     required String title,
     required String description,
-    List<Map<String, String>>? existingItems,
-    bool addToExisting = false,
   }) async {
+    // Reset first, so an earlier fallback never carries into this call.
+    lastUsedFallback = false;
+
     // Step 4: Classify into subcategory
     final subcategory = _detectSubcategory(category, title, description);
 
@@ -640,13 +641,6 @@ Source: General field practice
       subcategory,
       ticketId,
     );
-
-    final existingContext = addToExisting && existingItems != null
-        ? '''
-Current checklist items already generated (DO NOT repeat these):
-${existingItems.map((e) => '- ${e['title']}').join('\n')}
-'''
-        : '';
 
     // The past cases section exists only when same-subcategory cases do.
     final pastCasesSection = similarTickets == null
@@ -669,7 +663,7 @@ Detected Issue Type: $subcategory
 Issue Title: $title
 Customer Description: $description
 
-$existingContext
+
 
 === YOUR TASK ===
 Generate a checklist tailored specifically to THIS ticket.
@@ -705,8 +699,6 @@ Respond ONLY with a valid JSON array. No explanation, no markdown, no preamble.
   }
 ]
 ''';
-
-    lastUsedFallback = false;
 
     try {
       // TEMP-DEBUG [CHECKLIST] start
