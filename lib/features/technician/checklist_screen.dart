@@ -417,7 +417,7 @@ class ChecklistView extends StatelessWidget {
   final bool isGenerating;
 
   /// True when generation has been running for a while: a small "Still
-  /// working…" line shows under the generate button.
+  /// working…" line shows under the generate or regenerate button.
   final bool showSlowHint;
 
   /// What the checklist was based on (saved when it was generated); both are
@@ -466,16 +466,31 @@ class ChecklistView extends StatelessWidget {
     final doneCount = done.where((d) => d).length;
     final allDone = total > 0 && doneCount == total;
 
+    final basedOn = basedOnInfo(detectedSubcategory, detectedConfidence);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Checklist Generation')),
+      appBar: AppBar(
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                onPressed: () => Navigator.maybePop(context),
+              )
+            : null,
+        title: const Text('Checklist Generation'),
+      ),
       body: SafeArea(
         bottom: false,
         child: ListView(
           padding: EdgeInsets.fromLTRB(
+            AppSpacing.s3,
             AppSpacing.s4,
-            AppSpacing.s4,
-            AppSpacing.s4,
-            MediaQuery.paddingOf(context).bottom + AppSpacing.s4,
+            AppSpacing.s3,
+            // With a checklist, the bottom bar sits below the list and covers
+            // the safe area; without one, the list has to clear it itself.
+            total == 0
+                ? MediaQuery.paddingOf(context).bottom + AppSpacing.s4
+                : AppSpacing.s3,
           ),
           children: [
             _ProgressCard(
@@ -492,12 +507,11 @@ class ChecklistView extends StatelessWidget {
                 onGenerate: onGenerate,
               )
             else ...[
-              if (basedOnLine(detectedSubcategory, detectedConfidence)
-                  case final basedOn?) ...[
-                _BasedOnLabel(text: basedOn),
+              if (basedOn != null) ...[
+                _BasedOnCard(info: basedOn),
                 const SizedBox(height: AppSpacing.s4),
                 if (fromKnowledgeBase) ...[
-                  const _BasedOnLabel(
+                  const _NoteStrip(
                     text:
                         'Generated from the TM knowledge base (AI unavailable)',
                   ),
@@ -509,7 +523,9 @@ class ChecklistView extends StatelessWidget {
                 ],
               ],
               for (var i = 0; i < total; i++) ...[
+                if (i > 0) const SizedBox(height: AppSpacing.s3),
                 _ChecklistItemCard(
+                  key: ValueKey('checklist-item-$i'),
                   title: items[i]['title']?.toString() ?? '',
                   detail: items[i]['detail']?.toString() ?? '',
                   priority: items[i]['priority']?.toString() ?? 'Medium',
@@ -519,14 +535,95 @@ class ChecklistView extends StatelessWidget {
                   onToggle: () =>
                       onToggle(i, !(i < done.length ? done[i] : false)),
                 ),
-                const SizedBox(height: AppSpacing.s4),
+              ],
+            ],
+          ],
+        ),
+      ),
+      bottomNavigationBar: total == 0
+          ? null
+          : _BottomBar(
+              allDone: allDone,
+              isOpeningReport: isOpeningReport,
+              isGenerating: isGenerating,
+              showSlowHint: showSlowHint,
+              onReady: onReady,
+              onRegenerate: onGenerate,
+            ),
+    );
+  }
+}
+
+/// The actions pinned under the checklist: "Ticket Ready for Report" (once
+/// every item is ticked) above "Regenerate Checklist".
+class _BottomBar extends StatelessWidget {
+  final bool allDone;
+  final bool isOpeningReport;
+  final bool isGenerating;
+  final bool showSlowHint;
+  final VoidCallback onReady;
+  final VoidCallback onRegenerate;
+
+  const _BottomBar({
+    required this.allDone,
+    required this.isOpeningReport,
+    required this.isGenerating,
+    required this.showSlowHint,
+    required this.onReady,
+    required this.onRegenerate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.surfaceBg,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.s3,
+            AppSpacing.s1,
+            AppSpacing.s3,
+            AppSpacing.s3,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (allDone) ...[
+                ElevatedButton(
+                  onPressed: isOpeningReport ? () {} : onReady,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.resolvedFg,
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  child: isOpeningReport
+                      ? const SizedBox.square(
+                          dimension: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: AppColors.onPrimary,
+                          ),
+                        )
+                      : const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check),
+                            SizedBox(width: AppSpacing.s2),
+                            // Wraps instead of overflowing with large text.
+                            Flexible(child: Text('Ticket Ready for Report')),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: AppSpacing.s2),
               ],
               OutlinedButton.icon(
-                onPressed: isGenerating ? null : onGenerate,
+                onPressed: isGenerating ? null : onRegenerate,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
+                  backgroundColor: AppColors.surfaceCard,
                   foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary, width: 2),
+                  side: const BorderSide(color: AppColors.primary, width: 1.5),
                   textStyle: AppText.bodyStrong,
                 ),
                 icon: isGenerating
@@ -542,51 +639,9 @@ class ChecklistView extends StatelessWidget {
               ),
               if (isGenerating && showSlowHint) const SlowHintText(),
             ],
-          ],
+          ),
         ),
       ),
-      bottomNavigationBar: allDone
-          ? DecoratedBox(
-              decoration: const BoxDecoration(
-                color: AppColors.surfaceCard,
-                border: Border(top: BorderSide(color: AppColors.border)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.s4,
-                    AppSpacing.s3,
-                    AppSpacing.s4,
-                    AppSpacing.s4,
-                  ),
-                  child: ElevatedButton(
-                    onPressed: isOpeningReport ? () {} : onReady,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.resolvedFg,
-                      minimumSize: const Size.fromHeight(52),
-                    ),
-                    child: isOpeningReport
-                        ? const SizedBox.square(
-                            dimension: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: AppColors.onPrimary,
-                            ),
-                          )
-                        : const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.check),
-                              SizedBox(width: AppSpacing.s2),
-                              Text('Ticket Ready for Report'),
-                            ],
-                          ),
-                  ),
-                ),
-              ),
-            )
-          : null,
     );
   }
 }
@@ -729,6 +784,7 @@ class _ChecklistItemCard extends StatelessWidget {
   final VoidCallback onToggle;
 
   const _ChecklistItemCard({
+    super.key,
     required this.title,
     required this.detail,
     required this.priority,
@@ -758,8 +814,9 @@ class _ChecklistItemCard extends StatelessWidget {
         AppSpacing.s1,
         AppSpacing.s2,
         AppSpacing.s4,
-        AppSpacing.s4,
+        AppSpacing.s3,
       ),
+      // A ticked item keeps the same card; its title and detail are muted.
       decoration: BoxDecoration(
         color: AppColors.surfaceCard,
         borderRadius: AppRadius.brLg,
@@ -787,7 +844,10 @@ class _ChecklistItemCard extends StatelessWidget {
                       borderRadius: AppRadius.brSm,
                       border: isDone
                           ? null
-                          : Border.all(color: AppColors.borderStrong, width: 2),
+                          : Border.all(
+                              color: AppColors.borderStrong,
+                              width: 1.5,
+                            ),
                     ),
                     child: isDone
                         ? const Icon(
@@ -870,11 +930,126 @@ class _ChecklistItemCard extends StatelessWidget {
   }
 }
 
-/// A small note above the checklist items saying what it was based on.
-class _BasedOnLabel extends StatelessWidget {
+/// What the checklist was based on: the issue type and how sure the app is.
+class _BasedOnCard extends StatelessWidget {
+  final BasedOnInfo info;
+
+  const _BasedOnCard({required this.info});
+
+  @override
+  Widget build(BuildContext context) {
+    final level = info.level;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.s4),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primaryTint,
+                borderRadius: AppRadius.brMd,
+              ),
+              child: const Icon(
+                Icons.info_outline,
+                size: 20,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Based on',
+                  style: AppText.caption.copyWith(color: AppColors.inkMuted),
+                ),
+                Text(
+                  info.title,
+                  style: AppText.heading.copyWith(color: AppColors.ink),
+                ),
+                if (level != null) ...[
+                  const SizedBox(height: AppSpacing.s2),
+                  _Confidence(level: level),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Confidence", a three-part bar (High 3, Medium 2, Low 1) and the word, so
+/// the level never depends on colour alone.
+class _Confidence extends StatelessWidget {
+  final String level;
+
+  const _Confidence({required this.level});
+
+  @override
+  Widget build(BuildContext context) {
+    final (filled, bar) = switch (level) {
+      'High' => (3, AppColors.resolvedFg),
+      'Medium' => (2, AppColors.chartNew),
+      _ => (1, AppColors.closedFg),
+    };
+
+    return Semantics(
+      container: true,
+      label: 'Confidence: $level',
+      excludeSemantics: true,
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppSpacing.s2,
+        runSpacing: AppSpacing.s1,
+        children: [
+          Text(
+            'Confidence',
+            style: AppText.caption.copyWith(color: AppColors.inkMuted),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(width: AppSpacing.s1),
+                Container(
+                  key: ValueKey(
+                    'confidence-segment-$i-${i < filled ? 'on' : 'off'}',
+                  ),
+                  width: 20,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: i < filled ? bar : AppColors.border,
+                    borderRadius: AppRadius.brPill,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          Text(level, style: AppText.caption.copyWith(color: AppColors.ink)),
+        ],
+      ),
+    );
+  }
+}
+
+/// A blue note strip, used for the "AI unavailable" note.
+class _NoteStrip extends StatelessWidget {
   final String text;
 
-  const _BasedOnLabel({required this.text});
+  const _NoteStrip({required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -911,41 +1086,59 @@ class _SafetyNotesBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The same plain white card as the checklist items.
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.s3),
+      key: const ValueKey('safety-notes-card'),
+      padding: const EdgeInsets.all(AppSpacing.s4),
       decoration: BoxDecoration(
-        color: AppColors.accentTint,
-        borderRadius: AppRadius.brMd,
+        color: AppColors.surfaceCard,
+        borderRadius: AppRadius.brLg,
+        boxShadow: AppShadows.card,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const ExcludeSemantics(
-            child: Icon(
-              Icons.warning_amber_rounded,
-              size: 20,
-              color: AppColors.accentStrong,
-            ),
-          ),
-          const SizedBox(width: AppSpacing.s3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          Row(
+            children: [
+              const ExcludeSemantics(
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  size: 20,
+                  color: AppColors.accentStrong,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s2),
+              Expanded(
+                child: Text(
                   'Safety Notes',
                   style: AppText.bodyStrong.copyWith(color: AppColors.ink),
                 ),
-                for (final note in notes) ...[
-                  const SizedBox(height: AppSpacing.s1),
-                  Text(
-                    '\u2022 $note',
+              ),
+            ],
+          ),
+          for (final note in notes) ...[
+            const SizedBox(height: AppSpacing.s2),
+            // The bullet sits in its own column, so wrapped lines line up.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    '\u2022',
+                    textAlign: TextAlign.center,
                     style: AppText.body.copyWith(color: AppColors.ink),
                   ),
-                ],
+                ),
+                Expanded(
+                  child: Text(
+                    note,
+                    style: AppText.body.copyWith(color: AppColors.ink),
+                  ),
+                ),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -37,3 +37,34 @@ String? basedOnLine(String? subcategory, String? confidence) {
   final shown = level == 'high' ? 'High' : 'Medium';
   return 'Based on: $name | Confidence: $shown';
 }
+
+/// Shown instead of a name when the issue type was not clearly identified.
+const generalProcedureText =
+    'General procedure: the issue was not clearly identified';
+
+/// The parts of the "Based on" card. [level] is "High", "Medium" or "Low",
+/// or null when no confidence bar should be shown.
+typedef BasedOnInfo = ({String title, String? level});
+
+/// What the "Based on" card shows, or null when the ticket has no saved
+/// detection (an older ticket), so there is no card.
+///
+/// - a known subcategory with high / medium confidence: its name and level;
+/// - `general` or low confidence: [generalProcedureText] with "Low";
+/// - an unknown subcategory or confidence: [generalProcedureText], no level.
+BasedOnInfo? basedOnInfo(String? subcategory, String? confidence) {
+  final id = (subcategory ?? '').trim();
+  final level = (confidence ?? '').trim().toLowerCase();
+  if (id.isEmpty || level.isEmpty) return null;
+
+  final name = subcategoryNames[id];
+  if (name == null) return (title: generalProcedureText, level: null);
+  if (id == 'general' || level == 'low') {
+    return (title: generalProcedureText, level: 'Low');
+  }
+  return switch (level) {
+    'high' => (title: name, level: 'High'),
+    'medium' => (title: name, level: 'Medium'),
+    _ => (title: generalProcedureText, level: null),
+  };
+}
