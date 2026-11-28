@@ -1,5 +1,6 @@
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../../config/app_constants.dart';
+import '../config/ai_config.dart';
 import '../constants/service_areas.dart';
 import '../../utils/gemini_retry.dart';
 import '../config/timeouts.dart';
@@ -10,9 +11,8 @@ class AiExtractionService {
 
   AiExtractionService() {
     _model = GenerativeModel(
-      model: 'gemini-2.5-flash',
+      model: geminiModel,
       apiKey: AppConstants.geminiApiKey,
-      generationConfig: GenerationConfig(temperature: 0.2),
     );
   }
 

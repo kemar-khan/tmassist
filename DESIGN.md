@@ -233,7 +233,7 @@ General pattern: `StreamBuilder` (23 uses) or `FutureBuilder` (3) wraps the data
 
 ## 7. AI features in the UI
 
-Gemini (`gemini-2.5-flash`) is called directly from the app in two places.
+Gemini (`gemini-3.5-flash-lite`, set in `lib/core/config/ai_config.dart`) is called directly from the app in two places.
 
 ### 7.1 Ticket auto-fill: Submit Ticket screen
 1. At the top of the form is a segmented toggle, **Fill Form | AI Mode** (white pill, selected side filled blue, `auto_awesome` icon on AI Mode).

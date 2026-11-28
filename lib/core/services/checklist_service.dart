@@ -8,6 +8,7 @@ import '../../utils/similar_cases.dart';
 import '../../utils/checklist_kb.dart';
 import '../../utils/checklist_parse.dart';
 import '../config/timeouts.dart';
+import '../config/ai_config.dart';
 
 /// TEMP-DEBUG [CHECKLIST] output: the text sent to Gemini and what comes back.
 /// Printed only in debug builds, in pieces so long responses are not cut off.
@@ -22,12 +23,9 @@ class ChecklistService {
 
   ChecklistService() {
     _model = GenerativeModel(
-      model: 'gemini-2.5-flash',
+      model: geminiModel,
       apiKey: AppConstants.geminiApiKey,
-      generationConfig: GenerationConfig(
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-      ),
+      generationConfig: GenerationConfig(responseMimeType: 'application/json'),
     );
   }
 

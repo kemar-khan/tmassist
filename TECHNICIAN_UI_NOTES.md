@@ -151,7 +151,7 @@ Fields: `customerName`, `category`, `priority`, `createdAt`, `address`, `title`,
 2. `ChecklistService.generateChecklist(ticketId, category, title, description)`:
    - Classifies a subcategory with keyword rules (`_detectSubcategory`) and loads a built-in knowledge base for it.
    - Reads up to 5 past tickets with the same `category` and status RESOLVED or CLOSED as context (on failure the context becomes "Could not retrieve similar tickets.").
-   - Calls Gemini `gemini-2.5-flash` with a prompt asking for 5 to 8 items, each with `title`, `detail`, `priority`, `estimatedTime`, as a JSON array.
+   - Calls Gemini `gemini-3.5-flash-lite` with a prompt asking for 5 to 8 items, each with `title`, `detail`, `priority`, `estimatedTime`, as a JSON array.
    - Parses the response with a regex (`_parseJsonArray`).
 3. Saved to `tickets/{id}`: `checklistItems` (list of maps), `checklistDone` (list of bools, all false for new items; existing flags kept when adding), `updatedAt`.
 4. Success snackbar (green) "Checklist generated successfully!".
